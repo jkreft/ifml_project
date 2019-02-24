@@ -77,7 +77,7 @@ class BombeRLeWorld(object):
         # Add specified agents and start their subprocesses
         self.agents = []
         for agent_dir, train in agents:
-            if list([d for d,t in agents]).count(agent_dir) > 1: # more than one agent
+            if list([d for d,t in agents]).count(agent_dir) > 1:
                 name = agent_dir + '_' + str(list([a.process.agent_dir for a in self.agents]).count(agent_dir))
             else:
                 name = agent_dir
@@ -100,7 +100,7 @@ class BombeRLeWorld(object):
         self.active_agents = []
         self.bombs = []
         self.explosions = []
-        self.round_id = f'Replay {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+        self.round_id = f'Replay {datetime.now().strftime("%Y-%m-%d %H-%M-%S")}'
 
         # Arena with wall and crate layout
         self.arena = (np.random.rand(s.cols, s.rows) < s.crate_density).astype(int)
@@ -545,7 +545,7 @@ class ReplayWorld(BombeRLeWorld):
         # Recreate the agents
         self.colors = ['blue', 'green', 'yellow', 'pink']
         self.agents = [ReplayAgent(name, self.colors.pop(), x, y)
-            for (x,y,name,b) in self.replay['agents']]
+            for (x,y,name,b,s) in self.replay['agents']]
         for i,t in enumerate(self.replay['times']):
             self.agents[i].mean_time = t
 
@@ -561,7 +561,6 @@ class ReplayWorld(BombeRLeWorld):
 
         # Bookkeeping
         self.step = 0
-        self.active_agents = []
         self.bombs = []
         self.explosions = []
         self.running = True
