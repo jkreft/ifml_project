@@ -17,7 +17,11 @@ from settings import s, e
 
 
 class BombeRLeWorld(object):
-
+    ''' initializes a new world:
+        - set up logging
+        - set up gui
+        - set up agents
+    '''
     def __init__(self, agents):
         self.setup_logging()
         if s.gui:
@@ -32,8 +36,7 @@ class BombeRLeWorld(object):
         self.running = False
         self.ready_for_restart_flag = mp.Event()
         self.new_round()
-
-
+    
     def setup_logging(self):
         self.logger = logging.getLogger('BombeRLeWorld')
         self.logger.setLevel(s.log_game)
@@ -43,7 +46,6 @@ class BombeRLeWorld(object):
         handler.setFormatter(formatter)
         self.logger.addHandler(handler)
         self.logger.info('Initializing game world')
-
 
     def setup_gui(self):
         # Initialize screen
@@ -68,18 +70,22 @@ class BombeRLeWorld(object):
             'small': pygame.font.Font(font_name, 8),
         }
 
-
+    ''' initializes the agents:
+        adds the given agents to the world 
+    '''
     def setup_agents(self, agents):
         # Add specified agents and start their subprocesses
         self.agents = []
         for agent_dir, train in agents:
-            if list([d for d,t in agents]).count(agent_dir) > 1:
+            if list([d for d,t in agents]).count(agent_dir) > 1: # more than one agent
                 name = agent_dir + '_' + str(list([a.process.agent_dir for a in self.agents]).count(agent_dir))
             else:
                 name = agent_dir
             self.add_agent(agent_dir, name, train=train)
 
-
+    ''' starts a new round
+        - increasing the round counter by one
+    '''
     def new_round(self):
         if self.running:
             self.logger.warn('New round requested while still running')
