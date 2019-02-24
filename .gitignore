@@ -106,4 +106,4 @@ venv.bak/
 
 # IDE specific config files
 .pydevproject
-#.project
+.project
