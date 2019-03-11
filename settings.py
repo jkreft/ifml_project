@@ -13,7 +13,7 @@ settings = {
     'fps': 15,
 
     # Main loop
-    'update_interval': 0.1, # 0.33,
+    'update_interval': 0.5, # 0.33,
     'turn_based': False,
     'n_rounds': 10,
     'save_replay': False,
@@ -23,7 +23,7 @@ settings = {
     'cols': 17,
     'rows': 17,
     'grid_size': 30,
-    'crate_density': 0.75,
+    'crate_density': 0,
     'actions': ['UP', 'DOWN', 'LEFT', 'RIGHT', 'BOMB', 'WAIT'],
     'max_agents': 4,
     'max_steps': 400,
