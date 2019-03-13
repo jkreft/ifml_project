@@ -13,7 +13,6 @@ import threading
 from environment import BombeRLeWorld, ReplayWorld
 from settings import s
 
-
 # Function to run the game logic in a separate thread
 def game_logic(world, user_inputs):
     last_update = time()
@@ -40,12 +39,17 @@ def main():
     # mp.set_start_method('spawn')
 
     # Initialize environment and agents
-    world = BombeRLeWorld([
-            ('simple_agent', False),
-            ('simple_agent', False),
-            ('simple_agent', False),
-            ('simple_agent', False)
-        ])
+    if s.enemies == True:
+        world = BombeRLeWorld([
+                ('lukas_agent_RegressionForest', s.training),
+                ('simple_agent', False),
+                ('simple_agent', False),
+                ('simple_agent', False)
+            ])
+    else:
+        world = BombeRLeWorld([
+                ('lukas_agent', s.training)])
+        
     # world = ReplayWorld('Replay 2019-01-30 16:57:42')
     user_inputs = []
 
@@ -56,6 +60,7 @@ def main():
 
     # Run one or more games
     for i in range(s.n_rounds):
+        print("Round:", i)
         if not world.running:
             world.ready_for_restart_flag.wait()
             world.ready_for_restart_flag.clear()
@@ -99,7 +104,7 @@ def main():
             if s.gui and (time()-last_frame >= 1/s.fps):
                 world.render()
                 pygame.display.flip()
-                last_frame = time()
+                last_frame = time() 
             else:
                 sleep_time = 1/s.fps - (time() - last_frame)
                 if sleep_time > 0:
