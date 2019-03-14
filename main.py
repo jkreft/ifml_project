@@ -13,6 +13,7 @@ import threading
 from environment import BombeRLeWorld, ReplayWorld
 from settings import s
 
+
 # Function to run the game logic in a separate thread
 def game_logic(world, user_inputs):
     last_update = time()
