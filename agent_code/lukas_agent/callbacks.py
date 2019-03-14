@@ -10,6 +10,11 @@ from settings import s, e # settings and events
 from agent_code.lukas_agent.model import DecisionTree, GBM
 from agent_code.lukas_agent.model import RegressionForest
 
+# Looging 
+LOGGING = True
+DEBUGGING = True
+PRINTING = False
+
 # constants / hyperparameter
 GAMMA = 0.95
 LEARNING_RATE = 0.2#0.2 # 0.001
@@ -18,7 +23,7 @@ EPSILON_MAX = 1
 EPSILON_MIN = 0.05
 EPSILON_DECAY = 0.90 #0.96
 
-BUFFER_SIZE = 1000
+BUFFER_SIZE = 2000
 BATCH_SIZE = 100#20
 
 # addition
@@ -29,12 +34,12 @@ ACTION_SPACE = np.array(['UP', 'DOWN', 'LEFT', 'RIGHT', 'WAIT'])
 STATE_VERSION = 3
 
 def setup(self):    
-    self.logger.debug("Run setup code")
+    if LOGGING: self.logger.info("Run setup code")
     np.random.seed()
     
     # parameters:
     self.train = s.training # training is active
-    self.logger.info("Trainvergleich-mode is: " + str(self.train))
+    if LOGGING: self.logger.info("Training-mode is: " + str(self.train))
     
     self.buffer = deque(maxlen=BUFFER_SIZE)
     self.action_space = ACTION_SPACE
@@ -51,12 +56,13 @@ def setup(self):
         try:
             states_fit = np.load("states_" + str(self.model.name) + ".npy")
             q_values_fit = np.load("q_values_" + str(self.model.name) + ".npy")
-            self.logger.info('loading training data successfully, states size: ' + str(len(states_fit)) + "q_values size:" + str(len(q_values_fit)))
+            self.load_data = False # prevent loading data that is already fitted again
+            if LOGGING: self.logger.info('loading training data successfully, states size: ' + str(len(states_fit)) + "q_values size:" + str(len(q_values_fit)))
             self.model.fit(states_fit, q_values_fit)
-            self.logger.info("Model has been fitted successfully")
+            if LOGGING: self.logger.info("Model has been fitted successfully")
             self.isFit = True
         except IOError:
-            self.logger.info("No training data found, continue without fit.")
+            if LOGGING: self.logger.info("No training data found, continue without fit.")
             print("File does not exist, continue without fit.")
         except ValueError:
             print("Data has the wrong format")
@@ -67,7 +73,7 @@ def setup(self):
 def get_current_state(self, state_version = STATE_VERSION):
     if state_version == 1:
         arena = self.game_state['arena']
-        x, y, _, bombs_left, score = self.game_state['self']
+        x, y, name, bombs_left, score = self.game_state['self']
         bombs = self.game_state['bombs']
         bomb_xys = [(x,y) for (x,y,t) in bombs]
         others = [(x,y) for (x,y,n,b,s) in self.game_state['others']]
@@ -89,7 +95,7 @@ def get_current_state(self, state_version = STATE_VERSION):
         
         state = []  
         
-        print("############## targets:", targets)
+
         
         for target in targets:
             if target != None:
@@ -134,12 +140,23 @@ def get_current_state(self, state_version = STATE_VERSION):
         return state
     
     if state_version == 3:
-        num_targets = 2
-        # agent position:
+        ### agent position:
         x, y, name, bombs_left, score = self.game_state['self']
-        # coins position:
-        coins = self.game_state['coins']
         
+        ### fields around the agent
+        arena = self.game_state['arena']
+        u = arena[x,y+1]
+        r = arena[x+1,y]
+        d = arena[x,y-1]
+        l = arena[x-1,y]
+        
+        ### closest 2 coins position:
+        coins = self.game_state['coins']
+        num_targets = 1
+        #if len(coins > 1):
+        #    num_targets = 2
+        #else: 
+        #    num_targets = 1
         #free_space = arena == 0
         #targets = []
         #targets.append(look_for_targets(free_space, (x,y), coins))
@@ -157,16 +174,29 @@ def get_current_state(self, state_version = STATE_VERSION):
         #print("relative coords:", rel_coords)
         coins_state = []
         
+        #try:
         for i in range(num_targets):
             #coins_state.append([dist[sort[i]], rel_coords[sort[i], 0], rel_coords[sort[i], 1]] )
             coins_state.append([rel_coords[sort[i], 0], rel_coords[sort[i], 1]] )
-        #print("bs coins state:",coins_state)
-        # construct state
-        state = np.atleast_2d(np.array([x, y, *coins_state[0], *coins_state[1]]))
-        #print("final state:", state)
-        #return state
+            #print("bs coins state:",coins_state)
+        #except:
+        #    print("################### irgendwas stimmt hier nicht")
+        #    print("rel_coords:", rel_coords)
+        #    print("sort:", sort)
+        #    print("i:", i)
+        #    print("coins:", coins)
+        #    print("dist:", dist)
+        #    raise
+
+        #if num_targets == 1:
+        #    coins_state.append([np.PINF,np.PINF])
+        
+        ### construct state
+        state = np.atleast_2d(np.array([x, y, u, r, d, l, *coins_state[0]]))#, *coins_state[1]]))
+        #print("state:", state)
         return np.array(state)
 
+# TODO: shoud I add the q_values
 def to_buffer(self, s, a, r, n_s, terminal):
     ''' append new entry to the buffer
         add s: state, a: action, r: reward, n_s: next state, terminal: if the next_state is terminal
@@ -176,11 +206,11 @@ def to_buffer(self, s, a, r, n_s, terminal):
 def compute_action(self, state, isFit):
     action_index = 4  # default value 'Wait'
     if isFit:
-        q_values = self.model.predict(self.state)
-        print("q-values according to the model:", q_values, "of shape:", q_values.shape, "for the state:", state)
+        q_values = self.model.predict(state)
+        if PRINTING: print("q-values according to the model:", q_values, "of shape:", q_values.shape, "for the state:", state)
     else:
         q_values = np.zeros(self.action_space.shape).reshape(1, -1)
-        print("model not fit yet, q_values:", q_values, "of shape:", q_values.shape)
+        if PRINTING: print("model not fit yet, q_values:", q_values, "of shape:", q_values.shape)
     action_index = np.argmax(q_values[0])
     return action_index
 
@@ -190,7 +220,6 @@ def act(self):
     #### Only for testing
     arena = self.game_state['arena']
     ####
-    
     self.state = get_current_state(self)
     #print("############# der state sieht so aus:", self.state)
     
@@ -199,25 +228,22 @@ def act(self):
     # epsilon-greedy
     if np.random.rand() < self.exploration_rate:        
         action_index =  np.random.randint(len(self.action_space))
-        self.logger.info("Pick action with exploration, at rate: " + str(self.exploration_rate))
+        if LOGGING: self.logger.info("Pick action with exploration, at rate: " + str(self.exploration_rate))
         #print("exploration, with rate:", self.exploration_rate)
     # if model has already been fittet 
     elif self.isFit == True:
         action_index = compute_action(self, self.state, self.isFit)
-        self.logger.info("Pick action with exploitation of fitted model")
-        print("choosen action is:", self.action_space[action_index], "this action is: valid =", is_valid(self.state, arena, action_index))
+        if LOGGING: self.logger.info("Pick action with exploitation of fitted model")
+        if PRINTING: print("choosen action is:", self.action_space[action_index], "this action is: valid =", is_valid(self.state, arena, action_index))
     # if model has not been fitted yet
     else:
         action_index = compute_action(self, self.state, self.isFit)        
-        self.logger.info("get_current_state with isFit = " + str(self.isFit))
+        if LOGGING: self.logger.info("get_current_state with isFit = " + str(self.isFit))
         
     self.next_action = self.action_space[action_index]
     return
 
 def reward_update(self):
-    # TODO: integrate into buffer-function
-    #if self.game_state['step'] == 2: 
-    #    self.rewards = np.vstack((self.rewards,0))
     self.step += 1
     
     terminal = False
@@ -290,19 +316,19 @@ def end_of_episode(self):
             if self.isFit:
                 q_update = (reward + GAMMA * np.amax(self.model.predict(next_state)[0]))
                 #print("Predict value of next state:", self.model.predict(state_next))
-                self.logger.info("not terminal, isFit: q update: " + str(q_update))
+                if DEBUGGING: self.logger.debug("not terminal, isFit: q update: " + str(q_update))
             # if the model isn't fitted yet
             else:
                 q_update = reward 
                 #print(str(q_update))
-                self.logger.info("not terminal, not isFit: q update: " + str(q_update))
+                if DEBUGGING: self.logger.debug("not terminal, not isFit: q update: " + str(q_update))
                 
         if self.isFit:
             q_values = self.model.predict(state)
-            self.logger.info("general, isFit: q-values: " + str(q_values))
+            if DEBUGGING: self.logger.debug("general, isFit: q-values: " + str(q_values))
         else:
             q_values = np.zeros(self.action_space.shape).reshape(1, -1)
-            self.logger.info("general, not isFit: q-values: "+ str(q_values))
+            if DEBUGGING: self.logger.debug("general, not isFit: q-values: "+ str(q_values))
 
         action_id = np.argwhere(self.action_space == action)[0][0] # get the index of the selected action in the action space
         #print("index of current action", action_id)
@@ -322,11 +348,11 @@ def end_of_episode(self):
     
     # save data
     
-    print("######## save data #######")
+    if PRINTING: print("######## save data #######")
     np.save("states_" + str(self.model.name) + ".npy", states_fit)
     np.save("q_values_" + str(self.model.name) + ".npy", q_values_fit)
     
-    self.load_data = False # prevent loading data that is already fitted again
+    
     
     #self.model.fit(self.observations, self.rewards.ravel())
     #self.observations = np.zeros((0,3))
@@ -378,9 +404,16 @@ def look_for_targets(free_space, start, targets, max_count = 2, logger=None):
 ###### for testing:
 
 def tile_is_free(arena, x, y):
-    return (arena[x, y] == 0) #and (bombs[x, y] == 0)
+    try:
+        bool = (arena[int(x), int(y)] == 0) 
+    except:
+        print("##### die arena:", arena)
+        print("##### die Koordinaten:", x,y)
+        raise
+    return bool #and (bombs[x, y] == 0)
 
 def is_valid(state, arena, i):
+    #print("############################## der state siehr so aus: ", state)
     position = state[0,0:2]
     if i == 0:
         return tile_is_free(arena, position[0] + 1, position[1])

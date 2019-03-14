@@ -7,7 +7,6 @@ class GBM(MultiOutputRegressor):
     def __init__(self):
         self.name = "GB"
         super().__init__(LGBMRegressor(n_estimators=100, n_jobs=-1))
-        
         #self.model = MultiOutputRegressor(LGBMRegressor(n_estimators=100, n_jobs=-1))
         
 class RegressionForest(RandomForestRegressor):
