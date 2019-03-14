@@ -13,85 +13,6 @@ from train_settings import s, e
 training_mode = False
 
 
-### Model definition and Initialization
-
-def dqn_model(agent):
-    class DQN(nn.Module):
-
-        def __init__(self, s, e):
-            super(DQN, self).__init__()
-            agent.logger.info('DQN model created ...')
-
-        def network_setup(self, inputchannels):
-            ## Hyperparameters
-            # Calculate ε-decay to match number of rounds
-            eps_start, eps_end = 0.2, 0.002
-            self.eps = (eps_start, eps_end, -1. * s.n_rounds / np.log(1 / eps_start))
-            # Set up experience replay buffer
-            self.explay = buffer(100)
-            # Define size of batches to sample from buffer when learning
-            self.gamma = 0.95 # discount factor
-            self.batchsize = 32
-
-            # Possible actions
-            agent.poss_act = ['UP', 'DOWN', 'LEFT', 'RIGHT', 'WAIT']
-
-            ## Network architecture
-            self.conv1 = nn.Conv2d(inputchannels, 32, kernel_size=2, stride=1)
-            self.relu1 = nn.ReLU(inplace=True)
-            self.conv2 = nn.Conv2d(32, 64, 4, 2)
-            self.relu2 = nn.ReLU(inplace=True)
-            self.conv3 = nn.Conv2d(64, 64, 2, 1)
-            self.relu3 = nn.ReLU(inplace=True)
-            self.fc4 = nn.Linear(2304, 512)
-            self.relu4 = nn.ReLU(inplace=True)
-            self.fc5 = nn.Linear(512, len(agent.poss_act))
-            agent.logger.info('DQN is set up.')
-            agent.logger.debug(dqn_model)
-
-
-        def set_weights(self, random=True, file=False):
-            ## Initialization of DQN weights
-
-            if random:
-                # Set initial weights randomly
-                def random_weights(model):
-                    if type(model) == nn.Conv2d or type(model) == nn.Linear:
-                        nn.init.uniform_(model.weight, -0.01, 0.01)
-                        model.bias.data.fill_(0.01)
-                self.apply(random_weights)
-            elif file:
-                agent.logger.info('No weights found!')
-                # load weights of trained model from file and initialize
-
-            agent.logger.info('Model initialized.')
-
-        def load_from_file(self):
-            pass
-
-        def forward(self, x):
-            # Forward calculation of neural activations ...
-            out = self.conv1(x)
-            out = self.relu1(out)
-            out = self.conv2(out)
-            out = self.relu2(out)
-            out = self.conv3(out)
-            out = self.relu3(out)
-            out = out.view(out.size()[0], -1)
-            out = self.fc4(out)
-            out = self.relu4(out)
-            out = self.fc5(out)
-            return out
-
-    model = DQN()
-    lr = 0.001
-    try:
-        model.optimizer = optim.Adam(model.parameters(), lr=lr)
-    except Exception:
-        agent.logger.info('Failed initializing model optimizer.')
-    return model
-
-
 ### Dedicing on actions
 
 def explore(n, eps):
@@ -184,6 +105,7 @@ def reward(events, rewardtab=None):
 ###### Main functions ######
 ############################
 
+
 def setup(self):
     '''
     Called once, before the first round starts. Initialization, in particular of the model
@@ -200,7 +122,6 @@ def setup(self):
     self.stateshape = (1, statechannels, s.cols, s.rows)
     self.model = DQN(self)
     self.model.network_setup(statechannels)
-    self.agent.logger.debug(self.model)
 
     self.model.set_weights(random=True)
 
@@ -235,7 +156,6 @@ def act(self):
         action = select_action(self)
 
     self.next_action = action
-
 
 
 def reward_update(agent):

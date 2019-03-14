@@ -72,6 +72,7 @@ class DQN(nn.Module):
         self.relu4 = nn.ReLU(inplace=True)
         self.fc5 = nn.Linear(512, len(self.agent.poss_act))
         self.agent.logger.info('DQN is set up.')
+        self.agent.logger.debug(self.model)
 
     def set_weights(self, random=True, file=False):
         ## Initialization of DQN weights
