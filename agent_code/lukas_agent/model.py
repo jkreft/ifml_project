@@ -4,9 +4,9 @@ from sklearn.multioutput import MultiOutputRegressor
 from lightgbm import LGBMRegressor
 
 class GBM(MultiOutputRegressor):
-    def __init__(self):
+    def __init__(self, args):
         self.name = "GB"
-        super().__init__(LGBMRegressor(n_estimators=100, n_jobs=-1))
+        super().__init__(LGBMRegressor(**args))
         #self.model = MultiOutputRegressor(LGBMRegressor(n_estimators=100, n_jobs=-1))
         
 class RegressionForest(RandomForestRegressor):

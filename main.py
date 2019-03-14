@@ -60,7 +60,7 @@ def main():
 
     # Run one or more games
     for i in range(s.n_rounds):
-        print("Round:", i)
+        print("Round:", i+1)
         if not world.running:
             world.ready_for_restart_flag.wait()
             world.ready_for_restart_flag.clear()

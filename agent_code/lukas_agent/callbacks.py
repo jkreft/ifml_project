@@ -12,7 +12,7 @@ from agent_code.lukas_agent.model import RegressionForest
 
 # Looging 
 LOGGING = True
-DEBUGGING = True
+DEBUGGING = False
 PRINTING = False
 
 # constants / hyperparameter
@@ -32,6 +32,12 @@ ACTION_SPACE = np.array(['UP', 'DOWN', 'LEFT', 'RIGHT', 'WAIT'])
 # Parameters to controll model
 # param = {}
 STATE_VERSION = 3
+#           max tree leaves | max tree depth | self implemented | #boosted trees to fit | #samples for constr. bin | 
+gbm_args = {'num_leaves':31, 'max_depth':-1, 'learning_rate':1, 'n_estimators':100,     'subsample_for_bin':20000,
+             'class_weight':None}
+#           dont need this    
+
+rf_args  = 1
 
 def setup(self):    
     if LOGGING: self.logger.info("Run setup code")
@@ -45,7 +51,7 @@ def setup(self):
     self.action_space = ACTION_SPACE
     
     # initialize model
-    self.model = GBM() #RegressionForest()
+    self.model = RegressionForest() #GBM(gbm_args) #(**rf_argsm)
     self.isFit = False
     self.load_data = True
     self.step = 0
@@ -127,14 +133,14 @@ def get_current_state(self, state_version = STATE_VERSION):
         #for coin in self.game_state['coins']:
         #    state[0, 2, coin[0], coin[1]] = 1
             
-        state = np.zeros((1, 17, 17))
+        state = np.zeros((3, 17, 17))
         state[0] = arena
-        state[0, self.game_state['self'][0], self.game_state['self'][1]] = 1
+        state[1, self.game_state['self'][0], self.game_state['self'][1]] = 1
         for coin in self.game_state['coins']:
-            state[0, coin[0], coin[1]] = 2
+            state[2, coin[0], coin[1]] = 1
         
         #state = state.reshape(3, 17*17)
-        state = state.reshape(1, 17*17)
+        state = state.reshape(3, 17*17)
     
         #print("so sieht der geflattete state aus: ", state.shape)
         return state
@@ -203,7 +209,7 @@ def to_buffer(self, s, a, r, n_s, terminal):
     '''
     self.buffer.append((s, a, r, n_s, terminal))
 
-def compute_action(self, state, isFit):
+def select_action(self, state, isFit):
     action_index = 4  # default value 'Wait'
     if isFit:
         q_values = self.model.predict(state)
@@ -232,12 +238,12 @@ def act(self):
         #print("exploration, with rate:", self.exploration_rate)
     # if model has already been fittet 
     elif self.isFit == True:
-        action_index = compute_action(self, self.state, self.isFit)
+        action_index = select_action(self, self.state, self.isFit)
         if LOGGING: self.logger.info("Pick action with exploitation of fitted model")
         if PRINTING: print("choosen action is:", self.action_space[action_index], "this action is: valid =", is_valid(self.state, arena, action_index))
     # if model has not been fitted yet
     else:
-        action_index = compute_action(self, self.state, self.isFit)        
+        action_index = select_action(self, self.state, self.isFit)        
         if LOGGING: self.logger.info("get_current_state with isFit = " + str(self.isFit))
         
     self.next_action = self.action_space[action_index]
@@ -247,7 +253,8 @@ def reward_update(self):
     self.step += 1
     
     terminal = False
-    if e.GOT_KILLED in self.events or e.SURVIVED_ROUND in self.events: #check for terminal events
+    if e.GOT_KILLED in self.events or e.KILLED_SELF in self.events or e.SURVIVED_ROUND in self.events: #check for terminal events
+        if PRINTING: print("This is a terminal state")
         terminal = True
         
     #               last state | choosen action  | reward of next state | next state             | is state terminal
@@ -258,7 +265,7 @@ def reward_update(self):
     #if self.isFit == True:
     #    #print("isFit - run prediction")
     #    next_state = self.buffer[-1]
-    #    #new_optimal_action[1] = compute_action(self, self.buffer[0], True)
+    #    #new_optimal_action[1] = select_action(self, self.buffer[0], True)
     #    #new_state_reward = self.model.predict(np.asarray(next_state).reshape(1, -1))
     #    n_q_values = self.model.predict(next_state) # predict q-values for the next state
     #    new_state_reward = np.power(GAMMA, self.game_state['step']+1) * new_state_reward
