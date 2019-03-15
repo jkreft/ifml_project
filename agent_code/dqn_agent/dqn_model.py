@@ -1,33 +1,35 @@
 
 import torch.nn as nn
 import numpy as np
+from collections import deque
 
-
-
-class buffer(object):
+class Buffer():
     '''
     Implementation of the Experience Replay as a cyclic memory buffer.
     Allows to take a random sample of defined maximal size from the buffer for learning.
     '''
 
     def __init__(self, buffersize):
-        self.size = buffersize
-        self.memory = []
-        self.pos = 0
+        self.buffersize = buffersize
+        self.state = deque(maxlen=buffersize)
+        self.action = deque(maxlen=buffersize)
+        self.reward = deque(maxlen=buffersize)
+        self.nextstate = deque(maxlen=buffersize)
 
     def __len__(self):
-        return len(self.memory)
+        return len(self.state)
 
-    def store(self, entry):
+    def store(self, e):
         '''
-        Store a new state in the buffer memory.
-        :param entry: The new buffer entry to be stored {state, action, reward, next state}.
+        Store a new experience in the buffer memory.
+        :param experience: The new buffer entry to be stored {state, action, reward, next state}.
         '''
-
-        if len(self.memory) < self.size:
-            self.memory.append(None)
-        self.memory[self.pos] = entry
-        self.pos = (self.pos + 1) % self.size
+        print('Trying to store experience.')
+        self.state.append(e[0])
+        self.action.append(e[1])
+        self.reward.append(e[2])
+        self.nextstate.append(e[3])
+        print('experience stored')
 
     def sample(self, samplesize):
         '''
@@ -36,9 +38,21 @@ class buffer(object):
         :param samplesize: Size of the sample to taken.
         :return: Sample taken from memory.
         '''
-        s = len(self.memory) if samplesize > len(self.memory) else samplesize
-        return np.random.choice(self.memory, s, replace=False)
+        class Batchsample():
+            def __init__(self, buffer, idcs):
+                self.idcs = idcs
+                self.state = [buffer.state[i] for i in self.idcs]
+                self.action = [buffer.action[i] for i in self.idcs]
+                self.reward = [buffer.reward[i] for i in self.idcs]
+                self.nextstate = [buffer.nextstate[i] for i in self.idcs]
 
+        s = len(self) if samplesize > len(self) else samplesize
+        print(len(self))
+        si = np.random.choice(len(self), s)
+        print(si)
+        batch = Batchsample(self, si)
+        print('batch selected')
+        return batch
 
 
 class DQN(nn.Module):
@@ -46,17 +60,18 @@ class DQN(nn.Module):
         super(DQN, self).__init__()
         agent.logger.info('DQN model created ...')
         self.agent = agent
+        self.updates = 0
 
-    def network_setup(self, inputchannels):
+    def network_setup(self, inputchannels, eps=(0.9, 0.001), lint=10, tint=100, sint=1000, bs=32, gamma=0.95):
         ## Hyperparameters
-        # Calculate ε-decay to match number of rounds
-        eps_start, eps_end = 0.2, 0.002
-        self.eps = (eps_start, eps_end, -1. * self.agent.s.n_rounds / np.log(1 / eps_start))
-        # Set up experience replay buffer
-        self.explay = buffer(100)
-        # Define size of batches to sample from buffer when learning
-        self.gamma = 0.95  # discount factor
-        self.batchsize = 32
+        self.eps = (eps[0], eps[1], -1. * self.agent.s.n_rounds / np.log(1 / eps[0])) # Match ε-decay to n_round
+        self.explay = Buffer(1000) # Set up experience replay buffer
+        self.gamma = gamma  # Discount factor
+        self.batchsize = bs # Batch size for learning
+        self.learninginterval = lint # Learning interval
+        self.targetinterval = tint # Interval for updating target DQN
+
+        self.saveinterval = sint # Interval for saving values and parameters to file
 
         # Possible actions
         self.agent.poss_act = ['UP', 'DOWN', 'LEFT', 'RIGHT', 'WAIT']
@@ -72,22 +87,20 @@ class DQN(nn.Module):
         self.relu4 = nn.ReLU(inplace=True)
         self.fc5 = nn.Linear(512, len(self.agent.poss_act))
         self.agent.logger.info('DQN is set up.')
-        self.agent.logger.debug(self.model)
+        self.agent.logger.debug(self)
 
     def set_weights(self, random=True, file=False):
-        ## Initialization of DQN weights
 
+        def random_weights(model):
+            if type(model) == nn.Conv2d or type(model) == nn.Linear:
+                nn.init.uniform_(model.weight, -0.01, 0.01)
+                model.bias.data.fill_(0.01)
         if random:
             # Set initial weights randomly
-            def random_weights(model):
-                if type(model) == nn.Conv2d or type(model) == nn.Linear:
-                    nn.init.uniform_(model.weight, -0.01, 0.01)
-                    model.bias.data.fill_(0.01)
-
             self.apply(random_weights)
         elif file:
             self.agent.logger.info('No weights found!')
-            # load weights of trained model from file and initialize
+            # load weights of trained model from file and initialize ...
 
         self.agent.logger.info('Model initialized.')
 

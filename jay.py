@@ -10,8 +10,15 @@ import numpy as np
 import multiprocessing as mp
 import threading
 
+
+### Set mode ###
+trainingmode = True
+
 from environment import BombeRLeWorld, ReplayWorld
-from train_settings import s
+if trainingmode:
+    from train_settings import s
+else:
+    from settings import s
 
 
 # Function to run the game logic in a separate thread
@@ -33,17 +40,20 @@ def game_logic(world, user_inputs):
                     raise
 
 
-def train():
+def jay():
     pygame.init()
 
     # Emulate Windows process spawning behaviour under Unix (for testing)
     # mp.set_start_method('spawn')
 
-    # Initialize environment and agents
-    world = BombeRLeWorld([
-            ('user_agent', False),
-            ('dqn_agent', True)
-        ])
+    if trainingmode:
+        world = BombeRLeWorld([('dqn_agent', True)])
+    else:
+        # Initialize environment and agents
+        world = BombeRLeWorld([
+                ('user_agent', False),
+                ('dqn_agent', True)
+            ])
     # world = ReplayWorld('Replay 2019-01-30 16:57:42')
     user_inputs = []
 
@@ -109,4 +119,4 @@ def train():
 
 
 if __name__ == '__main__':
-    train()
+    jay()
