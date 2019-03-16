@@ -1,31 +1,88 @@
 
 import numpy as np
-from time import sleep
+import os
+from datetime import datetime
 
 import torch as T
 import torch.nn as nn
 import torch.optim as optim
 
-from agent_code.dqn_agent.dqn_model import DQN
+from agent_code.dqn_agent.dqn_model import DQN, Buffer
 from train_settings import s, e
 
 
-trainingmode = True
+# Flags for choosing in which settings to run
+training_mode = True
+load_from_file = False
+analysis = 20
+
+### Loading and saving models and data
+def load_model(agent, filepath=False):
+    try:
+        if filepath == False:
+            d = './models/load/'
+            # Choose first file in directory d
+            filepath = d + [x for x in os.listdir(d) if os.path.isfile(d + x)][0]
+        data = T.load(filepath)
+        agent.model.load_state_dict(data['model'])
+        agent.targetmodel.load_state_dict(data['model'])
+        agent.model.optimizer.load_state_dict(data['optimizer'])
+        agent.analysis = data['analysis']
+        agent.modelname = filepath.split('/')[-1].split('.pth')[0]
+        agent.explay = data['explay']
+        agent.trainingstep = data['trainingstep']
+        agent.logger.info(f'Model was loaded from file at step {agent.trainingstep}')
+        print(f'Model was loaded from file at step {agent.trainingstep}')
+    except Exception as error:
+        agent.logger.info(f'No file could be found. Error: {error}\nModel was not loaded!')
+        print(f'No file could be found. Error: {error}\nModel was not loaded!')
+
+def save_model(agent):
+    if not os.path.exists('./models'):
+        os.mkdir('./models')
+    filename = './models/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
+               + '_interval-' + str(agent.model.analysisinterval) + '.pth'
+    T.save({
+        'model': agent.model.state_dict(),
+        'optimizer': agent.model.optimizer.state_dict(),
+        'explay': agent.explay,
+        'analysis': agent.analysis,
+        'trainingstep': agent.trainingstep
+    }, filename)
+    print(f'Saved model at step {agent.trainingstep}. Filename: {filename}')
+
+def analysis_data(agent):
+    data = {
+        'action': agent.stepaction,
+        'reward': agent.stepreward,
+        'epsilon': agent.model.stepsilon,
+        'explored': agent.explored
+    }
+    agent.analysis.append(data)
 
 
-### Dedicing on actions
+### Deciding on actions
 
-def explore(n, eps):
-    '''
-    Implementation of an ε-greedy policy.
-    Choose whether to explore or exploit in this step.
-    :param n: Number of completed steps in the episode.
-    :param eps: Parameters for ε-threshold {Starting value, Final value, Exponential decay constant}.
-    :return: True if decided to explore.
-    '''
-    start, end, decay = eps
-    thresh = end + (start - end) * np.exp(-1. * n / decay)
-    return True if np.random.random() > thresh else False
+def construct_state_tensor(agent):
+    # Create state tensor from game_state data
+    state = T.zeros(agent.stateshape)
+    # Represent the arena (walls, ...)
+    state[0] = T.from_numpy(agent.game_state['arena'])
+    # The agent's own position
+    state[1, agent.game_state['self'][0], agent.game_state['self'][1]] = 1
+    # Positions of coins
+    for coin in agent.game_state['coins']:
+        state[2, coin[0], coin[1]] = 1
+    # Other players' positions
+    #for other in agent.game_state['others']:
+    #    state[2, other[0], other[1]] = 1
+    # Bomb position and countdown-timers
+    #for bomb in agent.game_state['bombs']:
+    #    state[3, bomb[0], bomb[1]] = bomb[2]
+    # Positions of explosions
+    #state[4] = T.from_numpy(agent.game_state['explosions'])
+
+    return state
 
 
 def select_action(agent):
@@ -36,41 +93,30 @@ def select_action(agent):
     agent.logger.debug('Entered action selection.')
 
     def policy(agent):
-        output = agent.model(agent.stepstate)[0]
-        action = T.argmax(output) # .item() ?
+        input = agent.stepstate[None,:,:,:]
+        output = agent.model(input)[0]
+        action = T.argmax(output)
         return action
 
-    if not agent.training:
-        return policy(agent)
+    if agent.training:
+        if agent.model.explore('exp'):
+            agent.explored = 1
+            action = T.tensor(np.random.choice(len(agent.poss_act)))
+            agent.logger.debug('Exploring: Chose ' + str(action))
+            return action
+        else:
+            agent.explored = 0
+            action = policy(agent)
+            agent.logger.debug('Using policy: Chose ' + str(action))
+            return action
     else:
-        return np.random.choice(agent.poss_act) if explore(agent.game_state['step'], agent.model.eps) else policy(agent)
+        return policy(agent)
 
 
 def select_random_action(agent):
     agent.logger.debug('Selecting random action.')
-    return np.random.choice(len(agent.poss_act))
+    return T.tensor(np.random.choice(len(agent.poss_act)))
 
-
-def construct_state_tensor(agent):
-    # Create state tensor from game_state data
-    state = T.zeros(agent.stateshape)
-    # Represent the arena (walls, ...)
-    state[0, 0] = T.from_numpy(agent.game_state['arena'])
-    # The agent's own position
-    state[0, 1, agent.game_state['self'][0], agent.game_state['self'][1]] = 1
-    # Positions of coins
-    for coin in agent.game_state['coins']:
-        state[0, 2, coin[0], coin[1]] = 1
-    # Other players' positions
-    #for other in agent.game_state['others']:
-    #    state[0, 2, other[0], other[1]] = 1
-    # Bomb position and countdown-timers
-    #for bomb in agent.game_state['bombs']:
-    #    state[0, 3, bomb[0], bomb[1]] = bomb[2]
-    # Positions of explosions
-    #state[0, 4] = T.from_numpy(agent.game_state['explosions'])
-
-    return state
 
 
 ### Training/Learning
@@ -91,10 +137,10 @@ def get_reward(events, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, -5, -10, -20, 0, 0, +30, 0, +100, +100, -100, -300, +50, +50]
+        rewardtab = [0, 0, 0, 0, -10, -20, -20, 0, 0, +30, 0, +100, +100, -100, -300, +50, +50]
 
-    # Set reward to zero, loop through events, and add up rewards
-    reward = 0
+    # Initialize reward, loop through events, and add up rewards
+    reward = -1
     for event in events:
         reward += rewardtab[event]
     return reward
@@ -106,9 +152,9 @@ def terminal_state():
     pass
 
 
-############################
-#####  Main functions  #####
-############################
+##################################
+#####     Main functions     #####
+##################################
 
 
 def setup(self):
@@ -116,32 +162,48 @@ def setup(self):
     Called once, before the first round starts. Initialization, in particular of the model
     :param self: Agent object.
     '''
-    self.logger.info('Mode: Training' if trainingmode else 'Mode: Testing')
-    self.training = trainingmode
-    np.random.seed(42)
+    self.training = training_mode
+    modestr = 'TRAINING' if self.training else 'TEST'
+    print(f'Running in {modestr} mode')
+    self.logger.info(f'Mode: {modestr}')
     self.s, self.e = s, e
 
     # Adapt state-tensor to current task (bombs, other players, etc)
-    statechannels = 3
-    self.stateshape = (1, statechannels, s.cols, s.rows)
+    channels = 3
+    self.stateshape = (channels, s.cols, s.rows)
 
-    # Create DQN and initialize weights
+    # Create and setup model and target DQNs
     self.model = DQN(self)
-    self.model.network_setup(statechannels)
-    self.model.set_weights(random=True)
-
-    # Create and initialize target DQN
     self.targetmodel = DQN(self)
-    self.targetmodel.network_setup(statechannels)
-    self.targetmodel.set_weights(random=True)
+    self.model.network_setup(channels=self.stateshape[0], analysis=analysis)
+    self.targetmodel.network_setup(channels=self.stateshape[0])
 
-    # Optimizer
-    lr = 0.001
+    # Setup Optimizer
     try:
-        self.model.optimizer = optim.Adam(self.model.parameters(), lr=lr)
+        self.learningrate = 0.001
+        self.model.optimizer = optim.Adam(self.model.parameters(), lr=self.learningrate)
     except Exception:
         self.agent.logger.info('Failed initializing model optimizer.')
 
+    # Load previous status from file or start training from the beginning
+    if load_from_file:
+        load_model(self)
+    else:
+        # Setup new experience replay
+        self.explay = Buffer(100000, self.stateshape)
+        self.modelname = str(datetime.now())[:-7]
+        print('Modelname:', self.modelname)
+
+        # Initialize model DQN and target DQN weights randomly
+        self.model.set_weights(random=True)
+        self.targetmodel.set_weights(random=True)
+        print('Initializing model weights randomly.')
+
+        self.trainingstep = 1
+        self.analysis = []
+
+    self.model.explay = self.explay
+    self.targetmodel.explay = self.explay
     self.logger.debug('Sucessfully completed setup code.')
 
 
@@ -158,9 +220,10 @@ def act(self):
         self.stepstate = construct_state_tensor(self)
         # Choose next action
         self.stepaction = select_action(self)
-        print('Action:', self.stepaction)
 
         if self.training:
+            if self.trainingstep % 10 == 0:
+                print(f'Training step {self.trainingstep}')
             # Check this is first step in episode and initializa sequence and variables
             # Initialize sequences and variables for next round
             if self.game_state['step'] == 1:
@@ -170,16 +233,12 @@ def act(self):
                 self.lastaction = None
 
             # Calculate reward for the events that occurred in this step
-            print('events:', self.events)
             self.stepreward = get_reward(self.events)
-            print('Reward:', self.stepreward)
 
             # Construct and store experience tuple
-            if self.lastaction is None:
-                print('First step.')
-            else:
+            if self.lastaction is not None:
                 s, a, r, n = construct_experience(self)
-                self.model.explay.store([s, a, r, n])
+                self.explay.store([s, a, r, n])
 
             # Update state and action variables
             self.laststate = self.stepstate
@@ -187,39 +246,49 @@ def act(self):
 
 
             if self.game_state['step'] % self.model.learninginterval == 0:
-                print('Learning step ...')
                 self.logger.info('Learning step ...')
                 # Sample batch of batchsize from experience replay buffer
-                batch = self.model.explay.sample(self.model.batchsize)
-                print('marker')
+                batch = self.explay.sample(self.model.batchsize)
 
-                nf = T.LongTensor([i for i in range(self.model.batchsize) if (batch.nextstate[i] == 0).sum().item() != 6 * 17 * 17])
+                #! Non final shit from wapu
+                nf = T.LongTensor([i for i in range(len(batch.nextstate)) if (batch.nextstate[i] == 0).sum().item() != np.prod(np.array(self.stateshape))])
                 nfnext = batch.nextstate[nf]
+
                 q = self.model(batch.state) # Get q-values from state using the model
                 q = q.gather(1, batch.action) # Put together with actions
-                nextq = T.zeros((self.model.batchsize, 6)).type(T.FloatTensor)
+
+                nextq = T.zeros((len(batch.nextstate), len(self.poss_act))).type(T.FloatTensor)
                 nfnextq = self.targetmodel(nfnext)
-                nextq.index_copy(0, nf, nfnextq)
+
+                # Make nextq so that it only contains the output for which the input states were non-final
+                #nextq = nfnextq[nf]
+                nextq.index_copy_(0, nf, nfnextq)
                 nextq = nextq.max(1)[0]
 
                 # Expected q-values for current state
                 expectedq = (nextq * self.model.gamma) + batch.reward
-                loss = nn.functional.smooth_l1_loss(q, expectedq)
-                self.logger.info('The loss in this learning step was ' + loss)
+                self.loss = nn.functional.smooth_l1_loss(q, expectedq)
+                self.logger.info('The loss in this learning step was ' + str(self.loss))
                 self.model.optimizer.zero_grad()
-                loss.backward()
+                self.loss.backward()
                 self.model.optimizer.step()
 
                 self.model.updates += 1
+                if self.model.updates % self.model.targetinterval == 0:
+                    self.targetmodel.load_state_dict(self.model.state_dict())
 
-            if self.model.updates % self.model.targetinterval == 0:
-                self.targetmodel.load_state_dict(self.model.state_dict())
+                if self.trainingstep % self.model.analysisinterval == 0:
+                    analysis_data(self)
 
-        self.next_action = self.poss_act[self.stepaction.item()]
-
+                if self.trainingstep % self.model.saveinterval == 0:
+                    save_model(self)
+        else:
+            print(f'Step {self.game_state["step"]}, chossing action {self.poss_act[self.stepaction.item()]}.')
     except Exception as error:
-        print(str(error))
-        self.next_action = self.poss_act[select_random_action(self)]
+        print('Exception in act()\n ' + str(error))
+        self.stepaction = select_random_action(self)
+
+    self.next_action = self.poss_act[self.stepaction.item()]
 
 
 def reward_update(self):
@@ -228,15 +297,13 @@ def reward_update(self):
     Used to update training data and do calculations.
     :param agent: Agent object.
     '''
-    pass
+    self.trainingstep += 1
+
 
 def end_of_episode(self):
     '''
     When in training mode, called at the end of each episode.
     :param agent: Agent object.
     '''
-
+    self.trainingstep += 1
     # Save parameters / weights to file?
-
-    s, a, r, n = construct_experience(self)
-    self.model.explay.store([s, a, r, n])

@@ -12,10 +12,10 @@ import threading
 
 
 ### Set mode ###
-trainingmode = True
+training_mode = True
 
 from environment import BombeRLeWorld, ReplayWorld
-if trainingmode:
+if training_mode:
     from train_settings import s
 else:
     from settings import s
@@ -46,13 +46,12 @@ def jay():
     # Emulate Windows process spawning behaviour under Unix (for testing)
     # mp.set_start_method('spawn')
 
-    if trainingmode:
+    if training_mode:
         world = BombeRLeWorld([('dqn_agent', True)])
     else:
         # Initialize environment and agents
         world = BombeRLeWorld([
-                ('user_agent', False),
-                ('dqn_agent', True)
+                ('dqn_agent', False)
             ])
     # world = ReplayWorld('Replay 2019-01-30 16:57:42')
     user_inputs = []
