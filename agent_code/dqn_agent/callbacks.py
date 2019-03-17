@@ -5,18 +5,26 @@ from datetime import datetime
 
 import torch as T
 import torch.nn as nn
-import torch.optim as optim
 
 from agent_code.dqn_agent.dqn_model import DQN, Buffer
 from train_settings import s, e
 
 
-# Flags for choosing in which settings to run
+
+### Flags for choosing in which settings to run ###
+
 training_mode = True
 load_from_file = False
 analysis = 20
 
-### Loading and saving models and data
+
+
+########################################################################################################################
+#####                                            Supporting Functions                                              #####
+########################################################################################################################
+
+### Loading and Saving Models and Data ###
+
 def load_model(agent, filepath=False):
     try:
         if filepath == False:
@@ -37,6 +45,7 @@ def load_model(agent, filepath=False):
         agent.logger.info(f'No file could be found. Error: {error}\nModel was not loaded!')
         print(f'No file could be found. Error: {error}\nModel was not loaded!')
 
+
 def save_model(agent):
     if not os.path.exists('./models'):
         os.mkdir('./models')
@@ -51,17 +60,19 @@ def save_model(agent):
     }, filename)
     print(f'Saved model at step {agent.trainingstep}. Filename: {filename}')
 
+
 def analysis_data(agent):
     data = {
         'action': agent.stepaction,
         'reward': agent.stepreward,
         'epsilon': agent.model.stepsilon,
-        'explored': agent.explored
+        'explored': agent.explored,
+        'loss': agent.model.loss
     }
     agent.analysis.append(data)
 
 
-### Deciding on actions
+### Deciding on Actions ###
 
 def construct_state_tensor(agent):
     # Create state tensor from game_state data
@@ -81,7 +92,6 @@ def construct_state_tensor(agent):
     #    state[3, bomb[0], bomb[1]] = bomb[2]
     # Positions of explosions
     #state[4] = T.from_numpy(agent.game_state['explosions'])
-
     return state
 
 
@@ -118,8 +128,7 @@ def select_random_action(agent):
     return T.tensor(np.random.choice(len(agent.poss_act)))
 
 
-
-### Training/Learning
+### Training/Learning ###
 
 def get_reward(events, rewardtab=None):
     '''
@@ -145,16 +154,19 @@ def get_reward(events, rewardtab=None):
         reward += rewardtab[event]
     return reward
 
+
 def construct_experience(agent):
     return agent.laststate, T.LongTensor([[agent.lastaction]]), T.tensor([agent.stepreward]).float(), agent.stepstate
+
 
 def terminal_state():
     pass
 
 
-##################################
-#####     Main functions     #####
-##################################
+
+########################################################################################################################
+#####                                               Main Functions                                                 #####
+########################################################################################################################
 
 
 def setup(self):
@@ -178,19 +190,12 @@ def setup(self):
     self.model.network_setup(channels=self.stateshape[0], analysis=analysis)
     self.targetmodel.network_setup(channels=self.stateshape[0])
 
-    # Setup Optimizer
-    try:
-        self.learningrate = 0.001
-        self.model.optimizer = optim.Adam(self.model.parameters(), lr=self.learningrate)
-    except Exception:
-        self.agent.logger.info('Failed initializing model optimizer.')
-
     # Load previous status from file or start training from the beginning
     if load_from_file:
         load_model(self)
     else:
         # Setup new experience replay
-        self.explay = Buffer(100000, self.stateshape)
+        self.explay = Buffer(1000, self.stateshape)
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
 
@@ -222,7 +227,7 @@ def act(self):
         self.stepaction = select_action(self)
 
         if self.training:
-            if self.trainingstep % 10 == 0:
+            if self.trainingstep % 100 == 0:
                 print(f'Training step {self.trainingstep}')
             # Check this is first step in episode and initializa sequence and variables
             # Initialize sequences and variables for next round
@@ -261,16 +266,16 @@ def act(self):
                 nfnextq = self.targetmodel(nfnext)
 
                 # Make nextq so that it only contains the output for which the input states were non-final
-                #nextq = nfnextq[nf]
                 nextq.index_copy_(0, nf, nfnextq)
                 nextq = nextq.max(1)[0]
 
                 # Expected q-values for current state
                 expectedq = (nextq * self.model.gamma) + batch.reward
-                self.loss = nn.functional.smooth_l1_loss(q, expectedq)
-                self.logger.info('The loss in this learning step was ' + str(self.loss))
+                #self.model.loss = nn.functional.smooth_l1_loss(q, expectedq)
+                self.steploss = self.model.loss(q, expectedq)
+                self.logger.info('The loss in this learning step was ' + str(self.steploss))
                 self.model.optimizer.zero_grad()
-                self.loss.backward()
+                self.steploss.backward()
                 self.model.optimizer.step()
 
                 self.model.updates += 1

@@ -1,12 +1,13 @@
 
+import numpy as np
 import torch as T
 import torch.nn as nn
-import numpy as np
+import torch.optim as optim
 
 
-########################################################
-#####           Experience Replay Buffer           #####
-########################################################
+########################################################################################################################
+#####                                           Experience Replay Buffer                                           #####
+########################################################################################################################
 
 class Buffer():
     '''
@@ -63,38 +64,45 @@ class Buffer():
         return batch
 
 
-########################################################
-#####                Deep Q-Network                #####
-########################################################
+########################################################################################################################
+#####                                                Deep Q-Network                                                #####
+########################################################################################################################
 
 class DQN(nn.Module):
+
     def __init__(self, agent):
         super(DQN, self).__init__()
         agent.logger.info('DQN model created ...')
         self.agent = agent
         self.updates = 0
+        self.agent.poss_act = self.agent.s.actions
 
-    def network_setup(self, channels=1, eps=(1, 0.1), lint=8, tint=1000, sint=50000, minibatch=32, gamma=0.95, analysis=False):
-        ## Hyperparameters
+
+    def network_setup(self, channels=1, eps=(1, 0.1), minibatch=32, gamma=0.95, lr=0.001, analysis=False,
+                      lint=8, tint=1000, sint=50000):
+
+        ### Hyperparameters ###
+
         self.eps = (                                                                # Match ε-decay to n_round
             eps[0],                                                                 # Starting value
             eps[1],                                                                 # Terminal value
             (eps[1]-eps[0])/self.agent.s.n_rounds/self.agent.s.max_steps,           # Linear decay slope
-            np.log(eps[1]/eps[0])/self.agent.s.n_rounds/self.agent.s.max_steps      # Exponential decay constant
-        )
-        self.gamma = gamma  # Discount factor
-        self.batchsize = minibatch # Batch size for learning
-        self.learninginterval = lint # Learning interval
-        self.targetinterval = tint # Interval for updating target DQN
+            np.log(eps[1]/eps[0])/self.agent.s.n_rounds/self.agent.s.max_steps)     # Exponential decay constant
 
-        # Intervals
-        self.saveinterval = sint # Interval for saving full model, parameters and buffers to file
-        self.analysisinterval = analysis # Interval for saving selected data for later analysis
+        self.gamma = gamma                                                          # Discount factor
+        self.learningrate = lr                                                      # Learning rate (alpha)
+        self.batchsize = minibatch                                                  # Batch size for learning
+        self.learninginterval = lint                                                # Learning interval
+        self.targetinterval = tint                                                  # Interval for updating target DQN
 
-        # Possible actions
-        self.agent.poss_act = self.agent.s.actions
+        ### Intervals ###
 
-        ## Network architecture
+        self.saveinterval = sint                                                    # Saving full model, params, buffer
+        self.analysisinterval = analysis                                            # Saving data for later analysis
+
+
+        ## Network architecture ###
+
         self.conv1 = nn.Conv2d(channels, 32, kernel_size=2, stride=1)
         self.relu1 = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
@@ -104,8 +112,18 @@ class DQN(nn.Module):
         self.fc4 = nn.Linear(3136, 512)
         self.relu4 = nn.ReLU(inplace=True)
         self.fc5 = nn.Linear(512, len(self.agent.poss_act))
-        self.agent.logger.info('DQN is set up.')
+        self.agent.logger.info('DQN is set up:')
         self.agent.logger.debug(self)
+
+        ### Optimizer ###
+
+        self.learningrate = lr
+        self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate)
+
+
+        ### Loss function ###
+        self.loss = nn.MSEloss()
+
 
     def set_weights(self, random=True, file=False):
 
@@ -122,19 +140,20 @@ class DQN(nn.Module):
 
         self.agent.logger.info('Model initialized.')
 
-    def forward(self, x):
-        # Forward calculation of neural activations ...
-        out = self.conv1(x)
-        out = self.relu1(out)
-        out = self.conv2(out)
-        out = self.relu2(out)
-        out = self.conv3(out)
-        out = self.relu3(out)
-        out = out.view(out.size(0), -1)
-        out = self.fc4(out)
-        out = self.relu4(out)
-        out = self.fc5(out)
-        return out
+
+    def forward(self, input):
+        '''
+        Forward calculation of neural activations ...
+        :param input: Input tensor.
+        :return: Output tensor (q-value for all possible actions).
+        '''
+        interm = self.relu1(self.conv1(input))
+        interm = self.relu2(self.conv2(interm))
+        interm = self.relu3(self.conv3(interm))
+        interm = self.relu4(self.fc4(interm.view(interm.size(0), -1)))
+        output = self.fc5(interm)
+        return output
+
 
     def explore(self, fct):
         '''
