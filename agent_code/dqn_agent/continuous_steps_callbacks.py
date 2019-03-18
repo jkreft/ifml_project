@@ -15,7 +15,7 @@ from train_settings import s, e
 
 training_mode = True
 load_from_file = False
-analysis = 20
+analysisinterval = 100
 
 
 
@@ -187,7 +187,7 @@ def setup(self):
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
-    self.model.network_setup(channels=self.stateshape[0], analysis=analysis)
+    self.model.network_setup(channels=self.stateshape[0], aint=analysis)
     self.targetmodel.network_setup(channels=self.stateshape[0])
 
     # Load previous status from file or start training from the beginning
