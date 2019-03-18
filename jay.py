@@ -14,8 +14,8 @@ import threading
 
 ### My own imports and changed setting! ###
 import os
-# os.environ["SDL_VIDEODRIVER"] = "dummy"
-os.putenv('SDL_VIDEODRIVER', 'fbcon')
+os.environ["SDL_VIDEODRIVER"] = "dummy"
+#os.putenv('SDL_VIDEODRIVER', 'fbcon')
 
 
 ### Set mode ###
@@ -66,7 +66,7 @@ def jay():
     t.start()
 
     ### Custom change! ###
-    pygame.display.init()
+    #pygame.display.init()
 
     # Run one or more games
     for i in range(s.n_rounds):
