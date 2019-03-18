@@ -17,7 +17,7 @@ settings = {
     # Main loop
     'update_interval': 0,
     'turn_based': False,
-    'n_rounds': 100,
+    'n_rounds': 200,
     'save_replay': False,
     'make_video_from_replay': False,
 
@@ -53,7 +53,7 @@ settings = {
     # Logging levels
     'log_game': logging.INFO,
     'log_agent_wrapper': logging.INFO,
-    'log_agent_code': logging.INFO,
+    'log_agent_code': logging.DEBUG,
 }
 settings['grid_offset'] = [(settings['height'] - settings['rows']*settings['grid_size'])//2] * 2
 s = namedtuple("Settings", settings.keys())(*settings.values())
