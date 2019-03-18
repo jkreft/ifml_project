@@ -12,18 +12,25 @@ import numpy as np
 import multiprocessing as mp
 import threading
 
+from environment import BombeRLeWorld, ReplayWorld
+from settings import s
+
+
 ### My own imports and changed setting! ###
+<<<<<<< HEAD
 import os
 os.environ["SDL_VIDEODRIVER"] = "dummy"
 import pygame.display
 
+=======
+#import os
+#os.environ["SDL_VIDEODRIVER"] = "dummy"
+>>>>>>> 3d9654b8104afdd6fe2deea3d1644f890b126060
 
 
 ### Set mode ###
 training_mode = True
 
-from environment import BombeRLeWorld, ReplayWorld
-from settings import s
 
 
 # Function to run the game logic in a separate thread
