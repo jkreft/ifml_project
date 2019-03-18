@@ -9,7 +9,7 @@ import torch as T
 import torch.nn as nn
 
 from agent_code.dqn_agent.dqn_model import DQN, Buffer
-from train_settings import s, e
+from settings import s, e
 
 
 
