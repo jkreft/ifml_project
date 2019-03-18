@@ -17,8 +17,8 @@ from settings import s, e
 
 training_mode = True
 load_from_file = False
-analysisinterval = 10
-saveinterval = 4000
+analysisinterval = 50
+saveinterval = 50000
 
 
 
