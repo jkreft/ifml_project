@@ -15,8 +15,8 @@ from settings import s, e
 
 ### Flags for choosing in which settings to run ###
 
-training_mode = False
-load_from_file = True
+training_mode = True
+load_from_file = False
 analysisinterval = 10
 saveinterval = 4000
 

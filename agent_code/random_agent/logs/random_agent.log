@@ -1,0 +1,28 @@
+2019-03-04 18:31:47,509 [random_agent_wrapper] INFO: Import agent code from "agent_code/random_agent/callbacks.py"
+2019-03-04 18:31:47,511 [random_agent_wrapper] INFO: Initialize agent code
+2019-03-04 18:31:47,524 [random_agent_wrapper] INFO: STARTING ROUND #1
+2019-03-04 18:31:48,027 [random_agent_wrapper] INFO: STARTING STEP 1
+2019-03-04 18:31:48,027 [random_agent_code] INFO: Pick action at random
+2019-03-04 18:31:48,028 [random_agent_wrapper] INFO: Chose action DOWN after 0.001s of thinking
+2019-03-04 18:31:48,537 [random_agent_wrapper] INFO: STARTING STEP 2
+2019-03-04 18:31:48,537 [random_agent_code] INFO: Pick action at random
+2019-03-04 18:31:48,537 [random_agent_wrapper] INFO: Chose action BOMB after 0.000s of thinking
+2019-03-04 18:31:49,027 [random_agent_wrapper] INFO: STARTING STEP 3
+2019-03-04 18:31:49,027 [random_agent_code] INFO: Pick action at random
+2019-03-04 18:31:49,027 [random_agent_wrapper] INFO: Chose action RIGHT after 0.000s of thinking
+2019-03-04 18:31:49,528 [random_agent_wrapper] INFO: STARTING STEP 4
+2019-03-04 18:31:49,528 [random_agent_code] INFO: Pick action at random
+2019-03-04 18:31:49,528 [random_agent_wrapper] INFO: Chose action UP after 0.000s of thinking
+2019-03-04 18:31:50,028 [random_agent_wrapper] INFO: STARTING STEP 5
+2019-03-04 18:31:50,028 [random_agent_code] INFO: Pick action at random
+2019-03-04 18:31:50,029 [random_agent_wrapper] INFO: Chose action DOWN after 0.000s of thinking
+2019-03-04 18:31:50,529 [random_agent_wrapper] INFO: STARTING STEP 6
+2019-03-04 18:31:50,529 [random_agent_code] INFO: Pick action at random
+2019-03-04 18:31:50,529 [random_agent_wrapper] INFO: Chose action UP after 0.000s of thinking
+2019-03-04 18:31:51,029 [random_agent_wrapper] INFO: STARTING STEP 7
+2019-03-04 18:31:51,029 [random_agent_code] INFO: Pick action at random
+2019-03-04 18:31:51,030 [random_agent_wrapper] INFO: Chose action RIGHT after 0.000s of thinking
+2019-03-04 18:31:51,035 [random_agent_wrapper] INFO: Received exit message for round
+2019-03-04 18:31:51,035 [random_agent_wrapper] INFO: Round #1 finished
+2019-03-04 18:34:53,459 [random_agent_wrapper] INFO: Received global exit message
+2019-03-04 18:34:53,459 [random_agent_wrapper] INFO: SHUT DOWN
