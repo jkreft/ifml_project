@@ -43,7 +43,7 @@ def jay():
     pygame.init()
 
     # Emulate Windows process spawning behaviour under Unix (for testing)
-    # mp.set_start_method('spawn')
+    mp.set_start_method('spawn')
 
     if training_mode:
         world = BombeRLeWorld([('dqn_agent', True)])
