@@ -17,10 +17,7 @@ import threading
 training_mode = True
 
 from environment import BombeRLeWorld, ReplayWorld
-if training_mode:
-    from train_settings import s
-else:
-    from settings import s
+from settings import s
 
 
 # Function to run the game logic in a separate thread

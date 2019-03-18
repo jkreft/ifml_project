@@ -9,13 +9,13 @@ settings = {
     # Display
     'width': 1000,
     'height': 600,
-    'gui': True,
-    'fps': 15,
+    'gui': False,
+    'fps': 0,
 
     # Main loop
-    'update_interval': 0.5, # 0.33,
+    'update_interval': 0,
     'turn_based': False,
-    'n_rounds': 10,
+    'n_rounds': 20,
     'save_replay': False,
     'make_video_from_replay': False,
 
@@ -24,10 +24,10 @@ settings = {
     'rows': 17,
     'grid_size': 30,
     'crate_density': 0,
-    'actions': ['UP', 'DOWN', 'LEFT', 'RIGHT', 'BOMB', 'WAIT'],
-    'max_agents': 4,
+    'actions': ['UP', 'DOWN', 'LEFT', 'RIGHT', 'WAIT'],
+    'max_agents': 1,
     'max_steps': 400,
-    'stop_if_not_training': False,
+    'stop_if_not_training': True,
     'bomb_power': 3,
     'bomb_timer': 4,
     'explosion_timer': 2,
@@ -51,7 +51,7 @@ settings = {
     # Logging levels
     'log_game': logging.INFO,
     'log_agent_wrapper': logging.INFO,
-    'log_agent_code': logging.DEBUG,
+    'log_agent_code': logging.INFO,
 }
 settings['grid_offset'] = [(settings['height'] - settings['rows']*settings['grid_size'])//2] * 2
 s = namedtuple("Settings", settings.keys())(*settings.values())
