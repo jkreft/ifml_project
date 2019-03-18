@@ -173,8 +173,8 @@ class Agent(object):
             self.bomb_sprite = None
 
         # Prepare overlay that will indicate dead agent on the scoreboard
-        self.shade = pygame.Surface((30,30), SRCALPHA)
-        self.shade.fill((0,0,0,208))
+        #self.shade = pygame.Surface((30,30), SRCALPHA)
+        #self.shade.fill((0,0,0,208))
 
         self.x, self.y = 1, 1
         self.total_score = 0

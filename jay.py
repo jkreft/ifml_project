@@ -12,17 +12,18 @@ import numpy as np
 import multiprocessing as mp
 import threading
 
+from environment import BombeRLeWorld, ReplayWorld
+from settings import s
+
+
 ### My own imports and changed setting! ###
-import os
-os.environ["SDL_VIDEODRIVER"] = "dummy"
-#os.putenv('SDL_VIDEODRIVER', 'fbcon')
+#import os
+#os.environ["SDL_VIDEODRIVER"] = "dummy"
 
 
 ### Set mode ###
 training_mode = True
 
-from environment import BombeRLeWorld, ReplayWorld
-from settings import s
 
 
 # Function to run the game logic in a separate thread
@@ -65,8 +66,6 @@ def jay():
     t.daemon = True
     t.start()
 
-    ### Custom change! ###
-    #pygame.display.init()
 
     # Run one or more games
     for i in range(s.n_rounds):
