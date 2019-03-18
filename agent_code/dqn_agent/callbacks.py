@@ -16,7 +16,7 @@ from settings import s, e
 ### Flags for choosing in which settings to run ###
 
 training_mode = True
-load_from_file = False
+load_from_file = True
 analysisinterval = 100
 saveinterval = 100000
 
@@ -116,6 +116,8 @@ def construct_state_tensor(agent):
     #    state[3, bomb[0], bomb[1]] = bomb[2]
     # Positions of explosions
     #state[4] = T.from_numpy(agent.game_state['explosions'])
+    if T.cuda.is_available():
+        state = state.cuda()
     return state
 
 
@@ -129,22 +131,23 @@ def select_action(agent):
     def policy(agent):
         input = agent.stepstate[None,:,:,:]
         output = agent.model(input)[0]
-        action = T.argmax(output)
-        return action
+        return T.argmax(output)
 
     if agent.training:
         if agent.model.explore('exp'):
             agent.explored = 1
             action = T.tensor(np.random.choice(len(agent.poss_act)))
             agent.logger.debug('Exploring: Chose ' + str(action))
-            return action
         else:
             agent.explored = 0
             action = policy(agent)
             agent.logger.debug('Using policy: Chose ' + str(action))
-            return action
     else:
-        return policy(agent)
+        action = policy(agent)
+
+    if T.cuda.is_available():  # put on GPU if CUDA is available
+        action = action.cuda()
+    return action
 
 
 def select_random_action(agent):
@@ -170,7 +173,7 @@ def get_reward(events, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, -10, -20, -20, 0, 0, +30, 0, +100, +100, -100, -300, +50, +50]
+        rewardtab = [0, 0, 0, 0, -10, -20, -20, 0, 0, 0, +20, +60, 0, 0, 0, 0, 0]
 
     # Initialize reward, loop through events, and add up rewards
     reward = -1
@@ -212,7 +215,7 @@ def setup(self):
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
-    self.model.network_setup(channels=self.stateshape[0], aint=analysisinterval, sint=saveinterval, eps=(0.9, 0.05))
+    self.model.network_setup(channels=self.stateshape[0], aint=analysisinterval, sint=saveinterval)
     self.targetmodel.network_setup(channels=self.stateshape[0])
 
     # Load previous status from file or start training from the beginning
@@ -235,6 +238,14 @@ def setup(self):
 
     self.model.explay = self.explay
     self.targetmodel.explay = self.explay
+
+    # Put on GPU if CUDA is available
+    if T.cuda.is_available():
+        self.model = self.model.cuda()
+        self.targetmodel = self.targetmodel.cuda()
+
+    print(f'Cuda is{"" if T.cuda.is_available() else " not"} available.')
+    self.logger.info(f'Cuda is{"" if T.cuda.is_available() else " not"} available.')
     self.logger.debug('Sucessfully completed setup code.')
 
 
@@ -253,12 +264,11 @@ def act(self):
         self.stepaction = select_action(self)
 
         if self.training:
-            if self.trainingstep % 100 == 0:
+            if self.trainingstep % 1000 == 0 or (self.trainingstep < 101 and self.trainingstep % 10 == 0):
                 print(f'Training step {self.trainingstep}')
             # Check if this is the first step in episode and initialize variables
             if self.game_state['step'] == 1:
                 self.seq = []
-                # ??? self.prepseq = []
                 self.laststate = None
                 self.lastaction = None
 
@@ -284,20 +294,40 @@ def act(self):
                 nf = T.LongTensor([i for i in range(len(batch.nextstate)) if (batch.nextstate[i] == 0).sum().item() != np.prod(np.array(self.stateshape))])
                 nfnext = batch.nextstate[nf]
 
-                q = self.model(batch.state) # Get q-values from state using the model
-                q = q.gather(1, batch.action) # Put together with actions
+                if T.cuda.is_available():
+                    batch.state = batch.state.cuda()
+                    batch.action = batch.action.cuda()
+                    q = self.model(batch.state) # Get q-values from state using the model
+                    q = q.gather(1, batch.action) # Put together with actions
+                    nextq = T.zeros((len(batch.nextstate), len(self.poss_act))) #.type(T.FloatTensor)
+                    nextq = nextq.cpu()
+                    nfnext = nfnext.cuda()
+                    nfnextq = self.targetmodel(nfnext)
+                    nfnextq = nfnextq.cpu()
+                    # Make nextq so that it only contains the output for which the input states were non-final
+                    nextq.index_copy_(0, nf, nfnextq)
+                    nextq = nextq.max(1)[0]
+                    # Expected q-values for current state
+                    expectedq = (nextq * self.model.gamma) + batch.reward
+                    expectedq = expectedq.cuda()
+                    self.steploss = self.model.loss(q, expectedq)
+                    self.steploss = self.steploss.cpu()
+                    batch.state = batch.state.cpu()
+                    batch.action = batch.action.cpu()
 
-                nextq = T.zeros((len(batch.nextstate), len(self.poss_act))).type(T.FloatTensor)
-                nfnextq = self.targetmodel(nfnext)
 
-                # Make nextq so that it only contains the output for which the input states were non-final
-                nextq.index_copy_(0, nf, nfnextq)
-                nextq = nextq.max(1)[0]
+                else:
+                    q = self.model(batch.state)  # Get q-values from state using the model
+                    q = q.gather(1, batch.action)  # Put together with actions
+                    nextq = T.zeros((len(batch.nextstate), len(self.poss_act))).type(T.FloatTensor)
+                    nfnextq = self.targetmodel(nfnext)
+                    # Make nextq so that it only contains the output for which the input states were non-final
+                    nextq.index_copy_(0, nf, nfnextq)
+                    nextq = nextq.max(1)[0]
+                    # Expected q-values for current state
+                    expectedq = (nextq * self.model.gamma) + batch.reward
+                    self.steploss = self.model.loss(q, expectedq)
 
-                # Expected q-values for current state
-                expectedq = (nextq * self.model.gamma) + batch.reward
-                #self.model.loss = nn.functional.smooth_l1_loss(q, expectedq)
-                self.steploss = self.model.loss(q, expectedq)
                 self.logger.info('The loss in this learning step was ' + str(self.steploss))
                 self.model.optimizer.zero_grad()
                 self.steploss.backward()
@@ -305,12 +335,11 @@ def act(self):
 
                 if self.model.learningstep % self.model.targetinterval == 0:
                     self.targetmodel.load_state_dict(self.model.state_dict())
-
+                # If analysisinterval True, save data and average over every interval
                 if self.model.analysisinterval:
                     step_analysis_data(self)
                     if self.model.learningstep % self.model.analysisinterval == 0:
                         average_analysis_data(self)
-
                 self.model.learningstep += 1
 
             if self.trainingstep % self.model.saveinterval == 0:
@@ -322,7 +351,7 @@ def act(self):
         print('Exception in act()\n ' + str(error))
         self.stepaction = select_random_action(self)
 
-    self.next_action = self.poss_act[self.stepaction.item()]
+    self.next_action = self.poss_act[int(self.stepaction.item())]
 
 
 def reward_update(self):
