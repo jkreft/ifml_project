@@ -1,3 +1,5 @@
+# -*- coding: future_fstrings -*-
+# First line is to enable f-strings in python3.5 installation on vserver
 
 from time import time, sleep
 import contextlib
