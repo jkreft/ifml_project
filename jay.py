@@ -12,6 +12,11 @@ import numpy as np
 import multiprocessing as mp
 import threading
 
+### My own imports and changed setting! ###
+import os
+# os.environ["SDL_VIDEODRIVER"] = "dummy"
+os.putenv('SDL_VIDEODRIVER', 'fbcon')
+
 
 ### Set mode ###
 training_mode = True
@@ -43,7 +48,7 @@ def jay():
     pygame.init()
 
     # Emulate Windows process spawning behaviour under Unix (for testing)
-    mp.set_start_method('spawn')
+    # mp.set_start_method('spawn')
 
     if training_mode:
         world = BombeRLeWorld([('dqn_agent', True)])
@@ -59,6 +64,9 @@ def jay():
     t = threading.Thread(target=game_logic, args=(world, user_inputs))
     t.daemon = True
     t.start()
+
+    ### Custom change! ###
+    pygame.display.init()
 
     # Run one or more games
     for i in range(s.n_rounds):

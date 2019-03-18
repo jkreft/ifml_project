@@ -17,7 +17,7 @@ from settings import s, e
 
 training_mode = True
 load_from_file = False
-analysisinterval = 100
+analysisinterval = 10
 saveinterval = 4000
 
 
@@ -53,13 +53,14 @@ def save_model(agent):
     if not os.path.exists('./models'):
         os.mkdir('./models')
     filename = './models/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
-               + '_interval-' + str(agent.model.analysisinterval) + '.pth'
+               + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
     T.save({
         'model': agent.model.state_dict(),
         'optimizer': agent.model.optimizer.state_dict(),
         'explay': agent.explay,
         'analysis': agent.analysis,
-        'trainingstep': agent.trainingstep
+        'trainingstep': agent.trainingstep,
+        'learninginterval': agent.model.learninginterval,
     }, filename)
     print(f'Saved model at step {agent.trainingstep}. Filename: {filename}')
 
@@ -67,7 +68,7 @@ def save_model(agent):
 def step_analysis_data(agent):
     agent.analysisbuffer.action.append(agent.stepaction)
     agent.analysisbuffer.reward.append(agent.stepreward)
-    agent.analysisbuffer.epsilon.append( agent.model.stepsilon)
+    agent.analysisbuffer.epsilon.append(agent.model.stepsilon)
     agent.analysisbuffer.explored.append(agent.explored)
     agent.analysisbuffer.loss.append(agent.steploss.detach().numpy())
 
@@ -82,12 +83,14 @@ class Analysisbuffer:
 
 
 def average_analysis_data(agent):
+    buffer = agent.analysisbuffer
     avgdata = {
-        'action': np.array(agent.analysisbuffer.action).mean(),
-        'reward': np.array(agent.analysisbuffer.reward).mean(),
-        'epsilon': np.array(agent.analysisbuffer.epsilon).mean(),
-        'explored': np.array(agent.analysisbuffer.explored).mean(),
-        'loss': np.array(agent.analysisbuffer.loss).mean()
+        'learningstep': np.array(agent.model.learningstep),
+        'action': np.array(buffer.action).mean(),
+        'reward': np.array(buffer.reward).mean(),
+        'epsilon': np.array(buffer.epsilon).mean(),
+        'explored': np.array(buffer.explored).mean(),
+        'loss': np.array(buffer.loss).mean()
     }
     agent.analysis.append(avgdata)
     agent.analysisbuffer = Analysisbuffer()
@@ -227,6 +230,7 @@ def setup(self):
         print('Initializing model weights randomly.')
 
         self.trainingstep = 1
+        self.model.learningstep = 1
         self.analysis = []
 
     self.model.explay = self.explay
@@ -272,7 +276,7 @@ def act(self):
 
 
             if self.game_state['step'] % self.model.learninginterval == 0:
-                self.logger.info('Learning step ...')
+                self.logger.debug('Learning step ...')
                 # Sample batch of batchsize from experience replay buffer
                 batch = self.explay.sample(self.model.batchsize)
 
@@ -299,17 +303,19 @@ def act(self):
                 self.steploss.backward()
                 self.model.optimizer.step()
 
-                self.model.updates += 1
-                if self.model.updates % self.model.targetinterval == 0:
+                if self.model.learningstep % self.model.targetinterval == 0:
                     self.targetmodel.load_state_dict(self.model.state_dict())
 
                 if self.model.analysisinterval:
                     step_analysis_data(self)
-                    if self.trainingstep % self.model.analysisinterval == 0:
+                    if self.model.learningstep % self.model.analysisinterval == 0:
                         average_analysis_data(self)
 
-                if self.trainingstep % self.model.saveinterval == 0:
-                    save_model(self)
+                self.model.learningstep += 1
+
+            if self.trainingstep % self.model.saveinterval == 0:
+                save_model(self)
+
         else:
             print(f'Step {self.game_state["step"]}, choosing action {self.poss_act[self.stepaction.item()]}.')
     except Exception as error:
