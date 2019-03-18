@@ -87,7 +87,7 @@ def act(self):
     Set the action you wish to perform by assigning the relevant string to
     self.next_action. You can assign to this variable multiple times during
     your computations. If this method takes longer than the time limit specified
-    in settings.py, execution is interrupted by the game and the current value
+    in original_settings.py, execution is interrupted by the game and the current value
     of self.next_action will be used. The default value is 'WAIT'.
     """
     self.logger.info('Picking action according to rule set')
@@ -211,7 +211,7 @@ def reward_update(self):
 
     When this method is called, self.events will contain a list of all game
     events relevant to your agent that occured during the previous step. Consult
-    settings.py to see what events are tracked. You can hand out rewards to your
+    original_settings.py to see what events are tracked. You can hand out rewards to your
     agent based on these events and your knowledge of the (new) game state. In
     contrast to act, this method has no time limit.
     """
