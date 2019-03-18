@@ -1,3 +1,5 @@
+# -*- coding: future_fstrings -*-
+# First line is to enable f-strings in python3.5 installation on vserver
 
 import numpy as np
 import os
@@ -15,7 +17,8 @@ from train_settings import s, e
 
 training_mode = True
 load_from_file = False
-analysis = 20
+analysisinterval = 100
+saveinterval = 4000
 
 
 
@@ -61,15 +64,33 @@ def save_model(agent):
     print(f'Saved model at step {agent.trainingstep}. Filename: {filename}')
 
 
-def analysis_data(agent):
-    data = {
-        'action': agent.stepaction,
-        'reward': agent.stepreward,
-        'epsilon': agent.model.stepsilon,
-        'explored': agent.explored,
-        'loss': agent.model.loss
+def step_analysis_data(agent):
+    agent.analysisbuffer.action.append(agent.stepaction)
+    agent.analysisbuffer.reward.append(agent.stepreward)
+    agent.analysisbuffer.epsilon.append( agent.model.stepsilon)
+    agent.analysisbuffer.explored.append(agent.explored)
+    agent.analysisbuffer.loss.append(agent.steploss.detach().numpy())
+
+
+class Analysisbuffer:
+    def __init__(self):
+        self.action = []
+        self.reward = []
+        self.epsilon = []
+        self.explored = []
+        self.loss = []
+
+
+def average_analysis_data(agent):
+    avgdata = {
+        'action': np.array(agent.analysisbuffer.action).mean(),
+        'reward': np.array(agent.analysisbuffer.reward).mean(),
+        'epsilon': np.array(agent.analysisbuffer.epsilon).mean(),
+        'explored': np.array(agent.analysisbuffer.explored).mean(),
+        'loss': np.array(agent.analysisbuffer.loss).mean()
     }
-    agent.analysis.append(data)
+    agent.analysis.append(avgdata)
+    agent.analysisbuffer = Analysisbuffer()
 
 
 ### Deciding on Actions ###
@@ -179,6 +200,7 @@ def setup(self):
     print(f'Running in {modestr} mode')
     self.logger.info(f'Mode: {modestr}')
     self.s, self.e = s, e
+    self.analysisbuffer = Analysisbuffer()
 
     # Adapt state-tensor to current task (bombs, other players, etc)
     channels = 3
@@ -187,7 +209,7 @@ def setup(self):
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
-    self.model.network_setup(channels=self.stateshape[0], analysis=analysis)
+    self.model.network_setup(channels=self.stateshape[0], aint=analysisinterval, sint=saveinterval)
     self.targetmodel.network_setup(channels=self.stateshape[0])
 
     # Load previous status from file or start training from the beginning
@@ -229,8 +251,7 @@ def act(self):
         if self.training:
             if self.trainingstep % 100 == 0:
                 print(f'Training step {self.trainingstep}')
-            # Check this is first step in episode and initializa sequence and variables
-            # Initialize sequences and variables for next round
+            # Check if this is the first step in episode and initialize variables
             if self.game_state['step'] == 1:
                 self.seq = []
                 # ??? self.prepseq = []
@@ -282,13 +303,15 @@ def act(self):
                 if self.model.updates % self.model.targetinterval == 0:
                     self.targetmodel.load_state_dict(self.model.state_dict())
 
-                if self.trainingstep % self.model.analysisinterval == 0:
-                    analysis_data(self)
+                if self.model.analysisinterval:
+                    step_analysis_data(self)
+                    if self.trainingstep % self.model.analysisinterval == 0:
+                        average_analysis_data(self)
 
                 if self.trainingstep % self.model.saveinterval == 0:
                     save_model(self)
         else:
-            print(f'Step {self.game_state["step"]}, chossing action {self.poss_act[self.stepaction.item()]}.')
+            print(f'Step {self.game_state["step"]}, choosing action {self.poss_act[self.stepaction.item()]}.')
     except Exception as error:
         print('Exception in act()\n ' + str(error))
         self.stepaction = select_random_action(self)

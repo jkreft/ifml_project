@@ -25,8 +25,10 @@ class Buffer():
         self.reward = T.zeros((self.buffersize, 1))
         self.nextstate = T.zeros((self.buffersize, *stateshape))
 
+
     def __len__(self):
         return max(self.fullness, self.pos)
+
 
     def store(self, e):
         '''
@@ -43,6 +45,7 @@ class Buffer():
         if self.pos == 1000:
             self.fullness = 1000
         self.pos += 1
+
 
     def sample(self, samplesize):
         '''
@@ -78,8 +81,8 @@ class DQN(nn.Module):
         self.agent.poss_act = self.agent.s.actions
 
 
-    def network_setup(self, channels=1, eps=(1, 0.1), minibatch=32, gamma=0.95, lr=0.001, analysis=False,
-                      lint=8, tint=1000, sint=50000):
+    def network_setup(self, channels=1, eps=(1, 0.1), minibatch=32, gamma=0.95, lr=0.001,
+                      lint=8, tint=1000, sint=50000, aint=False):
 
         ### Hyperparameters ###
 
@@ -98,7 +101,7 @@ class DQN(nn.Module):
         ### Intervals ###
 
         self.saveinterval = sint                                                    # Saving full model, params, buffer
-        self.analysisinterval = analysis                                            # Saving data for later analysis
+        self.analysisinterval = aint                                                # Saving data for later analysis
 
 
         ## Network architecture ###
@@ -122,7 +125,7 @@ class DQN(nn.Module):
 
 
         ### Loss function ###
-        self.loss = nn.MSEloss()
+        self.loss = nn.functional.mse_loss
 
 
     def set_weights(self, random=True, file=False):
