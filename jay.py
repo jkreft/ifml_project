@@ -15,7 +15,8 @@ import threading
 ### My own imports and changed setting! ###
 import os
 os.environ["SDL_VIDEODRIVER"] = "dummy"
-#os.putenv('SDL_VIDEODRIVER', 'fbcon')
+import pygame.display
+
 
 
 ### Set mode ###
@@ -47,6 +48,10 @@ def game_logic(world, user_inputs):
 def jay():
     pygame.init()
 
+	### Custom code! ###
+    #pygame.display.init()
+    #screen = pygame.display.set_mode((1,1), 0)
+
     # Emulate Windows process spawning behaviour under Unix (for testing)
     # mp.set_start_method('spawn')
 
@@ -65,8 +70,6 @@ def jay():
     t.daemon = True
     t.start()
 
-    ### Custom change! ###
-    #pygame.display.init()
 
     # Run one or more games
     for i in range(s.n_rounds):
