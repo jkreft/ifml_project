@@ -107,8 +107,5 @@ venv.bak/
 # IDE specific config files
 .pydevproject
 .project
-<<<<<<< HEAD
 models/
-=======
 /agent_code/dqn_agent/models
->>>>>>> da465a4d018ed0bb34e7b386d3b222437dcb2c94
