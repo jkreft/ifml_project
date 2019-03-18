@@ -12,7 +12,7 @@ settings = {
     'width': 1000,
     'height': 600,
     'gui': False,
-    'fps': 0,
+    'fps': 15,
 
     # Main loop
     'update_interval': 0,

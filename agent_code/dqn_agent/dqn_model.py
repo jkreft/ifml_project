@@ -117,7 +117,7 @@ class DQN(nn.Module):
         self.fc4 = nn.Linear(3136, 512)
         self.relu4 = nn.ReLU(inplace=True)
         self.fc5 = nn.Linear(512, len(self.agent.poss_act))
-        self.agent.logger.info('DQN is set up:')
+        self.agent.logger.info('DQN is set up.')
         self.agent.logger.debug(self)
 
         ### Optimizer ###
