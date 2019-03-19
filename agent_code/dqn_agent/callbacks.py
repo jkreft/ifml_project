@@ -234,6 +234,7 @@ def setup(self):
         self.trainingstep = 1
         self.model.learningstep = 1
         self.analysis = []
+        self.steploss = 100
 
     self.model.explay = self.explay
     self.targetmodel.explay = self.explay
