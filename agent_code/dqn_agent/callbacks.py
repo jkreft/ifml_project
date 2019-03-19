@@ -223,7 +223,7 @@ def setup(self):
         print('Model loaded marker')
     else:
         # Setup new experience replay
-        self.explay = Buffer(100000, self.stateshape, device=self.device)
+        self.explay = Buffer(100000, self.stateshape)
         print('Experience replay setup marker')
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
