@@ -291,8 +291,8 @@ def act(self):
 
                 # Sample batch of batchsize from experience replay buffer
                 batch = self.explay.sample(self.model.batchsize)
-                #batch.state = batch.state.to(self.device)
-                #batch.action = batch.action.to(self.device)
+                batch.state = batch.state.to(self.device)
+                batch.action = batch.action.to(self.device)
 
                 print('marker1')
 
