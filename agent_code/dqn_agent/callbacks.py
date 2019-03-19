@@ -265,10 +265,10 @@ def act(self):
                 self.seq = []
                 self.laststate = None
                 self.lastaction = None
-
+            print('marker-train')
             # Calculate reward for the events that occurred in this step
             self.stepreward = get_reward(self.events)
-
+            print('marker-train1')
             # Construct and store experience tuple
             if self.lastaction is not None:
                 s, a, r, n = construct_experience(self)
@@ -278,7 +278,7 @@ def act(self):
             self.laststate = self.stepstate
             self.lastaction = self.stepaction
 
-            print('marker-train')
+            print('marker-train2')
 
             if self.game_state['step'] % self.model.learninginterval == 0:
                 self.logger.debug('Learning step ...')
