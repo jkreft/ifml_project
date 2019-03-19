@@ -1,6 +1,3 @@
-# -*- coding: future_fstrings -*-
-# First line is to enable f-strings in python3.5 installation on vserver
-
 import numpy as np
 import os
 from datetime import datetime
@@ -15,10 +12,11 @@ from settings import s, e
 
 ### Flags for choosing in which settings to run ###
 
-training_mode = True
-load_from_file = False
-analysisinterval = 100
-saveinterval = 100000
+training_mode = False
+load_from_file = True
+analysis_interval = 300
+save_interval = 10000
+start_learning = 1000
 
 
 
@@ -65,14 +63,6 @@ def save_model(agent):
     print(f'Saved model at step {agent.trainingstep}. Filename: {filename}')
 
 
-def step_analysis_data(agent):
-    agent.analysisbuffer.action.append(agent.stepaction)
-    agent.analysisbuffer.reward.append(agent.stepreward)
-    agent.analysisbuffer.epsilon.append(agent.model.stepsilon)
-    agent.analysisbuffer.explored.append(agent.explored)
-    agent.analysisbuffer.loss.append(agent.steploss.detach().numpy())
-
-
 class Analysisbuffer:
     def __init__(self):
         self.action = []
@@ -82,10 +72,18 @@ class Analysisbuffer:
         self.loss = []
 
 
+def step_analysis_data(agent):
+    agent.analysisbuffer.action.append(agent.stepaction.cpu().numpy())
+    agent.analysisbuffer.reward.append(agent.stepreward)
+    agent.analysisbuffer.epsilon.append(agent.model.stepsilon)
+    agent.analysisbuffer.explored.append(agent.explored)
+    agent.analysisbuffer.loss.append(agent.steploss.detach().numpy())
+
+
 def average_analysis_data(agent):
     buffer = agent.analysisbuffer
     avgdata = {
-        'learningstep': np.array(agent.model.learningstep),
+        'learningstep': agent.model.learningstep,
         'action': np.array(buffer.action).mean(),
         'reward': np.array(buffer.reward).mean(),
         'epsilon': np.array(buffer.epsilon).mean(),
@@ -154,7 +152,7 @@ def select_random_action(agent):
 
 ### Training/Learning ###
 
-def get_reward(events, rewardtab=None):
+def get_reward(agent, rewardtab=None):
     '''
     Calculate the reward for one single or a sequence of events (e.g. an episode)
     based on an optionally provided reward table. If the input ist a list of events,
@@ -163,6 +161,7 @@ def get_reward(events, rewardtab=None):
     :param rewardtab: A different reward table can be provided optionally.
     :return: The (cumulative) reward.
     '''
+    events = agent.events
     if type(events) is not type([]):
         events = [events]
     if not rewardtab:
@@ -170,7 +169,7 @@ def get_reward(events, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, -1, -20, -20, 0, 0, 0, +20, +60, 0, 0, 0, 0, 0]
+        rewardtab = [0, 0, 0, 0, -2, -10, -10, 0, 0, 0, +20, +60, 0, 0, 0, 0, 0]
 
     # Initialize reward, loop through events, and add up rewards
     reward = -1
@@ -204,10 +203,11 @@ def setup(self):
     self.logger.info(f'Mode: {modestr}')
     self.s, self.e = s, e
     self.analysisbuffer = Analysisbuffer()
+    self.startlearning = start_learning
     self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
-    print(f'Cuda is{"" if T.cuda.is_available() else " not"} available.')
-    self.logger.info(f'Cuda is{"" if T.cuda.is_available() else " not"} available.')
-
+    self.cuda = T.cuda.is_available()
+    print(f'Cuda is{"" if self.cuda else " not"} available.')
+    self.logger.info(f'Cuda is{"" if self.cuda else " not"} available.')
     # Adapt state-tensor to current task (bombs, other players, etc)
     channels = 3
     self.stateshape = (channels, s.cols, s.rows)
@@ -215,17 +215,16 @@ def setup(self):
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
-    self.model.network_setup(channels=self.stateshape[0], aint=analysisinterval, sint=saveinterval)
+    self.model.network_setup(channels=self.stateshape[0], aint=analysis_interval, sint=save_interval)
     self.targetmodel.network_setup(channels=self.stateshape[0])
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
-
     # Load previous status from file or start training from the beginning
     if load_from_file:
         load_model(self)
     else:
         # Setup new experience replay
-        self.explay = Buffer(1000, self.stateshape)
+        self.explay = Buffer(100000, self.stateshape)
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
 
@@ -237,6 +236,7 @@ def setup(self):
         self.trainingstep = 1
         self.model.learningstep = 1
         self.analysis = []
+        self.steploss = T.tensor(100)
 
     self.model.explay = self.explay
     self.targetmodel.explay = self.explay
@@ -253,91 +253,112 @@ def act(self):
     '''
     self.logger.info(f'Agent {self.name} is picking action ...')
     try:
+
         # Build state tensor
         self.stepstate = construct_state_tensor(self)
-        # Choose next action
-        self.stepaction = select_action(self)
 
-        if self.training:
-            if self.trainingstep % 1000 == 0 or (self.trainingstep < 101 and self.trainingstep % 10 == 0):
+        if not self.training:
+            # Choose next action
+            self.stepaction = select_action(self)
+            print(f'Step {self.game_state["step"]}, choosing action {self.poss_act[self.stepaction.item()]}.')
+
+        else:
+
+            t = self.trainingstep
+            if (t % 1000 == 0) or (t < 101 and t % 10 == 0) or (t < 1001 and t % 100 == 0):
                 print(f'Training step {self.trainingstep}')
-            # Check if this is the first step in episode and initialize variables
-            if self.game_state['step'] == 1:
-                self.seq = []
-                self.laststate = None
-                self.lastaction = None
 
-            # Calculate reward for the events that occurred in this step
-            self.stepreward = get_reward(self.events)
+            if t <= self.startlearning:
+                # Check if this is the first step in episode and initialize variables
+                if t == 1:
+                    self.laststate = None
+                    self.lastaction = None
+                # Choose random action
+                self.stepaction = select_random_action(self)
+            else:
+                # Choose next action
+                self.stepaction = select_action(self)
 
+            # Calculate reward for the events leading to this step
+            self.stepreward = get_reward(self)
             # Construct and store experience tuple
             if self.lastaction is not None:
                 s, a, r, n = construct_experience(self)
                 self.explay.store([s, a, r, n])
-
             # Update state and action variables
             self.laststate = self.stepstate
             self.lastaction = self.stepaction
 
+            if t > self.startlearning:
+                if t % self.model.learninginterval == 0:
+                    self.logger.debug('Learning step ...')
 
-            if self.game_state['step'] % self.model.learninginterval == 0:
-                self.logger.debug('Learning step ...')
-                # Sample batch of batchsize from experience replay buffer
-                batch = self.explay.sample(self.model.batchsize)
-                batch.state = batch.state.to(self.device)
-                batch.action = batch.action.to(self.device)
+                    #print('marker-learn')
 
+                    # Sample batch of batchsize from experience replay buffer
+                    batch = self.explay.sample(self.model.batchsize)
 
-                # Non final check (like in pytorch RL tutorial)
-                nf = T.LongTensor([i for i in range(len(batch.nextstate)) if (batch.nextstate[i] == 0).sum().item() != np.prod(np.array(self.stateshape))])
-                nfnext = batch.nextstate[nf].to(self.device)
-                q = self.model(batch.state) # Get q-values from state using the model
-                q = q.gather(1, batch.action) # Put together with actions
-                nextq = T.zeros((len(batch.nextstate), len(self.poss_act))).cpu()
-                nfnextq = self.targetmodel(nfnext).cpu()
+                    # Non final check (like in pytorch RL tutorial)
+                    nf = T.LongTensor([i for i in range(len(batch.nextstate)) if
+                                       (batch.nextstate[i] == 0).sum().item() != np.prod(
+                                           np.array(self.stateshape))])
+                    nfnext = batch.nextstate[nf]
 
-                # Let nextq only contain the output for which the input states were non-final
-                nextq.index_copy_(0, nf, nfnextq)
-                nextq = nextq.max(1)[0]
+                    if T.cuda.is_available():
+                        batch.state = batch.state.cuda()
+                        batch.action = batch.action.cuda()
+                        nfnext = nfnext.cuda()
 
-                # Expected q-values for current state
-                expectedq = ( (nextq * self.model.gamma) + batch.reward ).to(self.device)
-                self.steploss = self.model.loss(q, expectedq)
-                self.steploss = self.steploss.cpu()
-                batch.state = batch.state.cpu()
-                batch.action = batch.action.cpu()
-                '''
-                q = self.model(batch.state)  # Get q-values from state using the model
-                q = q.gather(1, batch.action)  # Put together with actions
-                nextq = T.zeros((len(batch.nextstate), len(self.poss_act)))
-                nfnextq = self.targetmodel(nfnext)
-                
-                # Make nextq so that it only contains the output for which the input states were non-final
-                nextq.index_copy_(0, nf, nfnextq)
-                nextq = nextq.max(1)[0]
-                # Expected q-values for current state
-                expectedq = (nextq * self.model.gamma) + batch.reward
-                self.steploss = self.model.loss(q, expectedq)
-                '''
-                self.logger.info('The loss in this learning step was ' + str(self.steploss))
-                self.model.optimizer.zero_grad()
-                self.steploss.backward()
-                self.model.optimizer.step()
+                    q = self.model(batch.state) # Get q-values from state using the model
+                    q = q.gather(1, batch.action) # Put together with actions
+                    nextq = T.zeros((len(batch.nextstate), len(self.poss_act))).cpu()
+                    nfnextq = self.targetmodel(nfnext).cpu()
+                    #print('marker1')
 
-                if self.model.learningstep % self.model.targetinterval == 0:
-                    self.targetmodel.load_state_dict(self.model.state_dict())
+                    # Let nextq only contain the output for which the input states were non-final
+                    nextq.index_copy_(0, nf, nfnextq)
+                    nextq = nextq.max(1)[0]
+
+                    # Expected q-values for current state
+                    expectedq = ( (nextq * self.model.gamma) + batch.reward ).to(self.device)
+                    self.steploss = self.model.loss(q, expectedq)
+                    self.steploss = self.steploss.cpu()
+                    batch.state = batch.state.cpu()
+                    batch.action = batch.action.cpu()
+
+                    #print('marker3')
+                    '''
+                    q = self.model(batch.state)  # Get q-values from state using the model
+                    q = q.gather(1, batch.action)  # Put together with actions
+                    nextq = T.zeros((len(batch.nextstate), len(self.poss_act)))
+                    nfnextq = self.targetmodel(nfnext)
+                    
+                    # Make nextq so that it only contains the output for which the input states were non-final
+                    nextq.index_copy_(0, nf, nfnextq)
+                    nextq = nextq.max(1)[0]
+                    # Expected q-values for current state
+                    expectedq = (nextq * self.model.gamma) + batch.reward
+                    self.steploss = self.model.loss(q, expectedq)
+                    '''
+                    self.logger.info('The loss in this learning step was ' + str(self.steploss))
+                    self.model.optimizer.zero_grad()
+                    self.steploss.backward()
+                    self.model.optimizer.step()
+
+                    if self.model.learningstep % self.model.targetinterval == 0:
+                        self.targetmodel.load_state_dict(self.model.state_dict())
+                    #print('marker4')
+                    self.model.learningstep += 1
+
                 # If analysisinterval True, save data and average over every interval
                 if self.model.analysisinterval:
                     step_analysis_data(self)
-                    if self.model.learningstep % self.model.analysisinterval == 0:
+                    if self.trainingstep % self.model.analysisinterval == 0:
                         average_analysis_data(self)
-                self.model.learningstep += 1
 
-            if self.trainingstep % self.model.saveinterval == 0:
-                save_model(self)
+                if self.trainingstep % self.model.saveinterval == 0:
+                    save_model(self)
 
-        else:
-            print(f'Step {self.game_state["step"]}, choosing action {self.poss_act[self.stepaction.item()]}.')
     except Exception as error:
         print('Exception in act()\n ' + str(error))
         self.stepaction = select_random_action(self)

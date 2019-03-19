@@ -12,12 +12,20 @@ import numpy as np
 import multiprocessing as mp
 import threading
 
-
-### Set mode ###
-training_mode = True
-
 from environment import BombeRLeWorld, ReplayWorld
 from settings import s
+
+
+### Set mode ###
+training_mode = False
+on_server = False
+
+
+### Trying to solve problem with video initialization when running headless on server ###
+if on_server:
+    import os
+    os.environ["SDL_VIDEODRIVER"] = "dummy"
+    import pygame.display
 
 
 # Function to run the game logic in a separate thread
@@ -50,8 +58,7 @@ def jay():
     else:
         # Initialize environment and agents
         world = BombeRLeWorld([
-                ('dqn_agent', False),
-                ('user_agent', False)
+                ('dqn_agent', False)
             ])
     # world = ReplayWorld('Replay 2019-01-30 16:57:42')
     user_inputs = []
