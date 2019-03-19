@@ -72,7 +72,7 @@ class Analysisbuffer:
 
 
 def step_analysis_data(agent):
-    agent.analysisbuffer.action.append(agent.stepaction.numpy())
+    agent.analysisbuffer.action.append(agent.stepaction.cpu().numpy())
     agent.analysisbuffer.reward.append(agent.stepreward)
     agent.analysisbuffer.epsilon.append(agent.model.stepsilon)
     agent.analysisbuffer.explored.append(agent.explored)
