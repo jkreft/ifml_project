@@ -9,4 +9,4 @@
 #PBS -e ~/ifml/qsub/stderr.err
 #PBS -o ~/ifml/qsub/stdout.log
 
-./train
+sh ~/ifml/ifml_project/train.sh
