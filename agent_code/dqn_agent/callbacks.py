@@ -82,7 +82,7 @@ class Analysisbuffer:
 def average_analysis_data(agent):
     buffer = agent.analysisbuffer
     avgdata = {
-        'learningstep': np.array(agent.model.learningstep),
+        'learningstep': agent.model.learningstep,
         'action': np.array(buffer.action).mean(),
         'reward': np.array(buffer.reward).mean(),
         'epsilon': np.array(buffer.epsilon).mean(),
@@ -324,6 +324,7 @@ def act(self):
 
                 if self.model.learningstep % self.model.targetinterval == 0:
                     self.targetmodel.load_state_dict(self.model.state_dict())
+                    
                 # If analysisinterval True, save data and average over every interval
                 if self.model.analysisinterval:
                     step_analysis_data(self)
