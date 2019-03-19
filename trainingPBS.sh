@@ -2,7 +2,7 @@
 
 #PBS -q cuda
 #PBS -N ifml-pytorch
-#PBS -l nodes=denbi2-int
+#PBS -l nodes=denbi2-int:gpus=1
 #PBS -V
 #PBS -M jakob@kreft-mail.de
 #PBS -m bea
