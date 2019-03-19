@@ -1,7 +1,7 @@
 #!/bin/sh
 
 #PBS -q cuda
-#PBS -N ifml_pytorch
+#PBS -N ifml-pytorch
 #PBS -l nodes=denbi1-int:ppn=8
 #PBS -V
 #PBS -M j.kreft@stud.uni-heidelberg.de
@@ -11,4 +11,4 @@
 
 ~/.bashrc
 conda activate pytorch
-python3 jay.py
+python3 ~/ifml/ifml_project/jay.py
