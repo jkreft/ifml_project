@@ -14,7 +14,7 @@ from settings import s, e
 
 training_mode = True
 load_from_file = False
-analysisinterval = 100
+analysisinterval = 500
 saveinterval = 100000
 
 
@@ -62,14 +62,6 @@ def save_model(agent):
     print(f'Saved model at step {agent.trainingstep}. Filename: {filename}')
 
 
-def step_analysis_data(agent):
-    agent.analysisbuffer.action.append(agent.stepaction)
-    agent.analysisbuffer.reward.append(agent.stepreward)
-    agent.analysisbuffer.epsilon.append(agent.model.stepsilon)
-    agent.analysisbuffer.explored.append(agent.explored)
-    agent.analysisbuffer.loss.append(agent.steploss.detach().numpy())
-
-
 class Analysisbuffer:
     def __init__(self):
         self.action = []
@@ -77,6 +69,14 @@ class Analysisbuffer:
         self.epsilon = []
         self.explored = []
         self.loss = []
+
+
+def step_analysis_data(agent):
+    agent.analysisbuffer.action.append(agent.stepaction.numpy())
+    agent.analysisbuffer.reward.append(agent.stepreward)
+    agent.analysisbuffer.epsilon.append(agent.model.stepsilon)
+    agent.analysisbuffer.explored.append(agent.explored)
+    agent.analysisbuffer.loss.append(agent.steploss.detach().numpy())
 
 
 def average_analysis_data(agent):
@@ -305,11 +305,9 @@ def act(self):
                 nfnextq = self.targetmodel(nfnext).cpu()
                 #print('marker1')
 
-
                 # Let nextq only contain the output for which the input states were non-final
                 nextq.index_copy_(0, nf, nfnextq)
                 nextq = nextq.max(1)[0]
-
 
                 # Expected q-values for current state
                 expectedq = ( (nextq * self.model.gamma) + batch.reward ).to(self.device)
@@ -340,12 +338,13 @@ def act(self):
                 if self.model.learningstep % self.model.targetinterval == 0:
                     self.targetmodel.load_state_dict(self.model.state_dict())
                 #print('marker4')
-                # If analysisinterval True, save data and average over every interval
-                if self.model.analysisinterval:
-                    step_analysis_data(self)
-                    if self.model.learningstep % self.model.analysisinterval == 0:
-                        average_analysis_data(self)
                 self.model.learningstep += 1
+
+            # If analysisinterval True, save data and average over every interval
+            if self.model.analysisinterval:
+                step_analysis_data(self)
+                if self.trainingstep % self.model.analysisinterval == 0:
+                    average_analysis_data(self)
 
                 #print('marker5')
 
