@@ -1,5 +1,6 @@
 #!/bin/sh
 
+#PBS -q cuda
 #PBS -N ifml_pytorch
 #PBS -l nodes=denbi1-int:ppn=8
 #PBS -V
