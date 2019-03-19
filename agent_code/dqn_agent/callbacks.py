@@ -42,6 +42,7 @@ def load_model(agent, filepath=False):
         agent.modelname = filepath.split('/')[-1].split('.pth')[0]
         agent.explay = data['explay']
         agent.trainingstep = data['trainingstep']
+        agent.model.learningstep = data['trainingstep'] / data['learninginterval']
         agent.logger.info(f'Model was loaded from file at step {agent.trainingstep}')
         print(f'Model was loaded from file at step {agent.trainingstep}')
     except Exception as error:
