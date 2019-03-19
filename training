@@ -1,4 +1,0 @@
-#!/bin/bash
-
-conda activate pytorch
-python3 jay.py

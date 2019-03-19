@@ -1,0 +1,13 @@
+#!/bin/sh
+
+#PBS -N ifml_pytorch
+#PBS -l nodes=denbi1-int:ppn=8
+#PBS -V
+#PBS -M j.kreft@stud.uni-heidelberg.de
+#PBS -m bea
+#PBS -e ~/ifml/qsub/stderr.err
+#PBS -o ~/ifml/qsub/stdout.log
+
+~/.bashrc
+conda activate pytorch
+python3 jay.py
