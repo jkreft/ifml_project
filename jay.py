@@ -12,11 +12,6 @@ import numpy as np
 import multiprocessing as mp
 import threading
 
-### My own imports and changed setting! ###
-import os
-os.environ["SDL_VIDEODRIVER"] = "dummy"
-#os.putenv('SDL_VIDEODRIVER', 'fbcon')
-
 
 ### Set mode ###
 training_mode = True
@@ -55,7 +50,8 @@ def jay():
     else:
         # Initialize environment and agents
         world = BombeRLeWorld([
-                ('dqn_agent', False)
+                ('dqn_agent', False),
+                ('user_agent', False)
             ])
     # world = ReplayWorld('Replay 2019-01-30 16:57:42')
     user_inputs = []
@@ -65,8 +61,6 @@ def jay():
     t.daemon = True
     t.start()
 
-    ### Custom change! ###
-    #pygame.display.init()
 
     # Run one or more games
     for i in range(s.n_rounds):
