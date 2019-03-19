@@ -12,11 +12,17 @@ from agent_code.dqn_agent.dqn_model import DQN, Buffer
 from settings import s, e
 
 
+### My own imports and changed setting! ###
+import os
+os.environ["SDL_VIDEODRIVER"] = "dummy"
+import pygame.display
+
+
 
 ### Flags for choosing in which settings to run ###
 
 training_mode = True
-load_from_file = True
+load_from_file = False
 analysisinterval = 100
 saveinterval = 100000
 
@@ -42,7 +48,6 @@ def load_model(agent, filepath=False):
         agent.modelname = filepath.split('/')[-1].split('.pth')[0]
         agent.explay = data['explay']
         agent.trainingstep = data['trainingstep']
-        agent.model.learningstep = data['trainingstep'] / data['learninginterval']
         agent.logger.info(f'Model was loaded from file at step {agent.trainingstep}')
         print(f'Model was loaded from file at step {agent.trainingstep}')
     except Exception as error:
@@ -145,10 +150,7 @@ def select_action(agent):
             agent.logger.debug('Using policy: Chose ' + str(action))
     else:
         action = policy(agent)
-
-    if T.cuda.is_available():  # put on GPU if CUDA is available
-        action = action.cuda()
-    return action
+    return action.to(agent.device)
 
 
 def select_random_action(agent):
@@ -174,7 +176,7 @@ def get_reward(events, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, -10, -20, -20, 0, 0, 0, +20, +60, 0, 0, 0, 0, 0]
+        rewardtab = [0, 0, 0, 0, -1, -20, -20, 0, 0, 0, +20, +60, 0, 0, 0, 0, 0]
 
     # Initialize reward, loop through events, and add up rewards
     reward = -1
@@ -208,6 +210,9 @@ def setup(self):
     self.logger.info(f'Mode: {modestr}')
     self.s, self.e = s, e
     self.analysisbuffer = Analysisbuffer()
+    self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
+    print(f'Cuda is{"" if T.cuda.is_available() else " not"} available.')
+    self.logger.info(f'Cuda is{"" if T.cuda.is_available() else " not"} available.')
 
     # Adapt state-tensor to current task (bombs, other players, etc)
     channels = 3
@@ -218,6 +223,8 @@ def setup(self):
     self.targetmodel = DQN(self)
     self.model.network_setup(channels=self.stateshape[0], aint=analysisinterval, sint=saveinterval)
     self.targetmodel.network_setup(channels=self.stateshape[0])
+    # Put DQNs on cuda if available
+    self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
 
     # Load previous status from file or start training from the beginning
     if load_from_file:
@@ -240,13 +247,6 @@ def setup(self):
     self.model.explay = self.explay
     self.targetmodel.explay = self.explay
 
-    # Put on GPU if CUDA is available
-    if T.cuda.is_available():
-        self.model = self.model.cuda()
-        self.targetmodel = self.targetmodel.cuda()
-
-    print(f'Cuda is{"" if T.cuda.is_available() else " not"} available.')
-    self.logger.info(f'Cuda is{"" if T.cuda.is_available() else " not"} available.')
     self.logger.debug('Sucessfully completed setup code.')
 
 
@@ -290,45 +290,41 @@ def act(self):
                 self.logger.debug('Learning step ...')
                 # Sample batch of batchsize from experience replay buffer
                 batch = self.explay.sample(self.model.batchsize)
+                batch.state = batch.state.to(self.device)
+                batch.action = batch.action.to(self.device)
 
-                #! Non final shit from wapu
+
+                # Non final check (like in pytorch RL tutorial)
                 nf = T.LongTensor([i for i in range(len(batch.nextstate)) if (batch.nextstate[i] == 0).sum().item() != np.prod(np.array(self.stateshape))])
-                nfnext = batch.nextstate[nf]
+                nfnext = batch.nextstate[nf].to(self.device)
+                q = self.model(batch.state) # Get q-values from state using the model
+                q = q.gather(1, batch.action) # Put together with actions
+                nextq = T.zeros((len(batch.nextstate), len(self.poss_act))).cpu()
+                nfnextq = self.targetmodel(nfnext).cpu()
 
-                if T.cuda.is_available():
-                    batch.state = batch.state.cuda()
-                    batch.action = batch.action.cuda()
-                    q = self.model(batch.state) # Get q-values from state using the model
-                    q = q.gather(1, batch.action) # Put together with actions
-                    nextq = T.zeros((len(batch.nextstate), len(self.poss_act))) #.type(T.FloatTensor)
-                    nextq = nextq.cpu()
-                    nfnext = nfnext.cuda()
-                    nfnextq = self.targetmodel(nfnext)
-                    nfnextq = nfnextq.cpu()
-                    # Make nextq so that it only contains the output for which the input states were non-final
-                    nextq.index_copy_(0, nf, nfnextq)
-                    nextq = nextq.max(1)[0]
-                    # Expected q-values for current state
-                    expectedq = (nextq * self.model.gamma) + batch.reward
-                    expectedq = expectedq.cuda()
-                    self.steploss = self.model.loss(q, expectedq)
-                    self.steploss = self.steploss.cpu()
-                    batch.state = batch.state.cpu()
-                    batch.action = batch.action.cpu()
+                # Let nextq only contain the output for which the input states were non-final
+                nextq.index_copy_(0, nf, nfnextq)
+                nextq = nextq.max(1)[0]
 
-
-                else:
-                    q = self.model(batch.state)  # Get q-values from state using the model
-                    q = q.gather(1, batch.action)  # Put together with actions
-                    nextq = T.zeros((len(batch.nextstate), len(self.poss_act))).type(T.FloatTensor)
-                    nfnextq = self.targetmodel(nfnext)
-                    # Make nextq so that it only contains the output for which the input states were non-final
-                    nextq.index_copy_(0, nf, nfnextq)
-                    nextq = nextq.max(1)[0]
-                    # Expected q-values for current state
-                    expectedq = (nextq * self.model.gamma) + batch.reward
-                    self.steploss = self.model.loss(q, expectedq)
-
+                # Expected q-values for current state
+                expectedq = ( (nextq * self.model.gamma) + batch.reward ).to(self.device)
+                self.steploss = self.model.loss(q, expectedq)
+                self.steploss = self.steploss.cpu()
+                batch.state = batch.state.cpu()
+                batch.action = batch.action.cpu()
+                '''
+                q = self.model(batch.state)  # Get q-values from state using the model
+                q = q.gather(1, batch.action)  # Put together with actions
+                nextq = T.zeros((len(batch.nextstate), len(self.poss_act)))
+                nfnextq = self.targetmodel(nfnext)
+                
+                # Make nextq so that it only contains the output for which the input states were non-final
+                nextq.index_copy_(0, nf, nfnextq)
+                nextq = nextq.max(1)[0]
+                # Expected q-values for current state
+                expectedq = (nextq * self.model.gamma) + batch.reward
+                self.steploss = self.model.loss(q, expectedq)
+                '''
                 self.logger.info('The loss in this learning step was ' + str(self.steploss))
                 self.model.optimizer.zero_grad()
                 self.steploss.backward()
