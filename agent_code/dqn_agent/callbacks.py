@@ -202,8 +202,9 @@ def setup(self):
     self.s, self.e = s, e
     self.analysisbuffer = Analysisbuffer()
     self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
-    print(f'Cuda is{"" if T.cuda.is_available() else " not"} available.')
-    self.logger.info(f'Cuda is{"" if T.cuda.is_available() else " not"} available.')
+    self.cuda = T.cuda.is_available()
+    print(f'Cuda is{"" if self.cuda else " not"} available.')
+    self.logger.info(f'Cuda is{"" if self.cuda else " not"} available.')
     print('setupmarker1')
     # Adapt state-tensor to current task (bombs, other players, etc)
     channels = 3
@@ -291,24 +292,29 @@ def act(self):
 
                 # Sample batch of batchsize from experience replay buffer
                 batch = self.explay.sample(self.model.batchsize)
-                batch.state = batch.state.to(self.device)
-                batch.action = batch.action.to(self.device)
+                if T.cuda.is_available():
+                    batch.state = batch.state.cuda()
+                    batch.action = batch.action.cuda()
 
                 print('marker1')
 
                 # Non final check (like in pytorch RL tutorial)
                 nf = T.LongTensor([i for i in range(len(batch.nextstate)) if (batch.nextstate[i] == 0).sum().item() != np.prod(np.array(self.stateshape))]).to(self.device)
                 nfnext = batch.nextstate[nf]
+                print('marker2')
                 q = self.model(batch.state) # Get q-values from state using the model
+                print('marker 2,5')
                 q = q.gather(1, batch.action) # Put together with actions
                 nextq = T.zeros((len(batch.nextstate), len(self.poss_act))).cpu()
+                print('marker2,8')
                 nfnextq = self.targetmodel(nfnext).cpu()
+                print('marker2,9')
+
 
                 # Let nextq only contain the output for which the input states were non-final
                 nextq.index_copy_(0, nf, nfnextq)
                 nextq = nextq.max(1)[0]
 
-                print('marker2')
 
                 # Expected q-values for current state
                 expectedq = ( (nextq * self.model.gamma) + batch.reward ).to(self.device)
