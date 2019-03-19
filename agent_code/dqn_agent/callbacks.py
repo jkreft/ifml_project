@@ -260,12 +260,12 @@ def act(self):
             t = self.trainingstep
             if t % 1000 == 0 or (t < 101 and t % 10 == 0) or (t < 1001 and t % 100 == 0):
                 print(f'Training step {self.trainingstep}')
+            print('marker-train')
             # Check if this is the first step in episode and initialize variables
             if self.game_state['step'] == 1:
-                self.seq = []
                 self.laststate = None
                 self.lastaction = None
-            print('marker-train')
+            print('marker-train0')
             # Calculate reward for the events that occurred in this step
             self.stepreward = get_reward(self.events)
             print('marker-train1')
