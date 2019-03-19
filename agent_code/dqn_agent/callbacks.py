@@ -205,7 +205,6 @@ def setup(self):
     self.cuda = T.cuda.is_available()
     print(f'Cuda is{"" if self.cuda else " not"} available.')
     self.logger.info(f'Cuda is{"" if self.cuda else " not"} available.')
-    print('setupmarker1')
     # Adapt state-tensor to current task (bombs, other players, etc)
     channels = 3
     self.stateshape = (channels, s.cols, s.rows)
@@ -217,15 +216,12 @@ def setup(self):
     self.targetmodel.network_setup(channels=self.stateshape[0])
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
-    print('setupmarker2')
     # Load previous status from file or start training from the beginning
     if load_from_file:
         load_model(self)
-        print('Model loaded marker')
     else:
         # Setup new experience replay
         self.explay = Buffer(100000, self.stateshape)
-        print('Experience replay setup marker')
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
 
@@ -237,11 +233,9 @@ def setup(self):
         self.trainingstep = 1
         self.model.learningstep = 1
         self.analysis = []
-        print('Model initialized marker')
 
     self.model.explay = self.explay
     self.targetmodel.explay = self.explay
-    print('Experience replay attached to model marker')
 
     self.logger.debug('Sucessfully completed setup code.')
 
@@ -265,15 +259,15 @@ def act(self):
             t = self.trainingstep
             if t % 1000 == 0 or (t < 101 and t % 10 == 0) or (t < 1001 and t % 100 == 0):
                 print(f'Training step {self.trainingstep}')
-            print('marker-train')
+            #print('marker-train')
             # Check if this is the first step in episode and initialize variables
             if self.game_state['step'] == 1:
                 self.laststate = None
                 self.lastaction = None
-            print('marker-train0')
+            #print('marker-train0')
             # Calculate reward for the events that occurred in this step
             self.stepreward = get_reward(self.events)
-            print('marker-train1')
+            #print('marker-train1')
             # Construct and store experience tuple
             if self.lastaction is not None:
                 s, a, r, n = construct_experience(self)
@@ -283,12 +277,12 @@ def act(self):
             self.laststate = self.stepstate
             self.lastaction = self.stepaction
 
-            print('marker-train2')
+            #print('marker-train2')
 
             if self.game_state['step'] % self.model.learninginterval == 0:
                 self.logger.debug('Learning step ...')
 
-                print('marker-learn')
+                #print('marker-learn')
 
                 # Sample batch of batchsize from experience replay buffer
                 batch = self.explay.sample(self.model.batchsize)
@@ -308,7 +302,7 @@ def act(self):
                 q = q.gather(1, batch.action) # Put together with actions
                 nextq = T.zeros((len(batch.nextstate), len(self.poss_act))).cpu()
                 nfnextq = self.targetmodel(nfnext).cpu()
-                print('marker1')
+                #print('marker1')
 
 
                 # Let nextq only contain the output for which the input states were non-final
@@ -323,7 +317,7 @@ def act(self):
                 batch.state = batch.state.cpu()
                 batch.action = batch.action.cpu()
 
-                print('marker3')
+                #print('marker3')
                 '''
                 q = self.model(batch.state)  # Get q-values from state using the model
                 q = q.gather(1, batch.action)  # Put together with actions
@@ -344,7 +338,7 @@ def act(self):
 
                 if self.model.learningstep % self.model.targetinterval == 0:
                     self.targetmodel.load_state_dict(self.model.state_dict())
-                print('marker4')
+                #print('marker4')
                 # If analysisinterval True, save data and average over every interval
                 if self.model.analysisinterval:
                     step_analysis_data(self)
@@ -352,7 +346,7 @@ def act(self):
                         average_analysis_data(self)
                 self.model.learningstep += 1
 
-                print('marker5')
+                #print('marker5')
 
             if self.trainingstep % self.model.saveinterval == 0:
                 save_model(self)
