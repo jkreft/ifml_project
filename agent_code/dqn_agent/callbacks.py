@@ -224,6 +224,7 @@ def setup(self):
     else:
         # Setup new experience replay
         self.explay = Buffer(100000, self.stateshape, device=self.device)
+        print('Experience replay setup marker')
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
 
@@ -239,7 +240,7 @@ def setup(self):
 
     self.model.explay = self.explay
     self.targetmodel.explay = self.explay
-    print('Experience replay set up marker')
+    print('Experience replay attached to model marker')
 
     self.logger.debug('Sucessfully completed setup code.')
 
