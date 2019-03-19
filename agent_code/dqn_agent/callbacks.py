@@ -1,6 +1,3 @@
-# -*- coding: future_fstrings -*-
-# First line is to enable f-strings in python3.5 installation on vserver
-
 import numpy as np
 import os
 from datetime import datetime
@@ -10,12 +7,6 @@ import torch.nn as nn
 
 from agent_code.dqn_agent.dqn_model import DQN, Buffer
 from settings import s, e
-
-
-### My own imports and changed setting! ###
-import os
-os.environ["SDL_VIDEODRIVER"] = "dummy"
-import pygame.display
 
 
 
