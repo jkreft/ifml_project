@@ -9,6 +9,6 @@
 #PBS -e ~/ifml/qsub/stderr.err
 #PBS -o ~/ifml/qsub/stdout.log
 
-~/.bashrc
+source ~/.bashrc
 conda activate pytorch
 python3 ~/ifml/ifml_project/jay.py
