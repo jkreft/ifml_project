@@ -255,6 +255,7 @@ def act(self):
         # Choose next action
         self.stepaction = select_action(self)
 
+
         if self.training:
             t = self.trainingstep
             if t % 1000 == 0 or (t < 101 and t % 10 == 0) or (t < 1001 and t % 100 == 0):
@@ -277,14 +278,19 @@ def act(self):
             self.laststate = self.stepstate
             self.lastaction = self.stepaction
 
+            print('marker-train')
 
             if self.game_state['step'] % self.model.learninginterval == 0:
                 self.logger.debug('Learning step ...')
+
+                print('marker-learn')
+
                 # Sample batch of batchsize from experience replay buffer
                 batch = self.explay.sample(self.model.batchsize)
                 #batch.state = batch.state.to(self.device)
                 #batch.action = batch.action.to(self.device)
 
+                print('marker1')
 
                 # Non final check (like in pytorch RL tutorial)
                 nf = T.LongTensor([i for i in range(len(batch.nextstate)) if (batch.nextstate[i] == 0).sum().item() != np.prod(np.array(self.stateshape))]).to(self.device)
@@ -298,12 +304,16 @@ def act(self):
                 nextq.index_copy_(0, nf, nfnextq)
                 nextq = nextq.max(1)[0]
 
+                print('marker2')
+
                 # Expected q-values for current state
                 expectedq = ( (nextq * self.model.gamma) + batch.reward ).to(self.device)
                 self.steploss = self.model.loss(q, expectedq)
                 self.steploss = self.steploss.cpu()
                 batch.state = batch.state.cpu()
                 batch.action = batch.action.cpu()
+
+                print('marker3')
                 '''
                 q = self.model(batch.state)  # Get q-values from state using the model
                 q = q.gather(1, batch.action)  # Put together with actions
@@ -324,13 +334,15 @@ def act(self):
 
                 if self.model.learningstep % self.model.targetinterval == 0:
                     self.targetmodel.load_state_dict(self.model.state_dict())
-                    
+                print('marker4')
                 # If analysisinterval True, save data and average over every interval
                 if self.model.analysisinterval:
                     step_analysis_data(self)
                     if self.model.learningstep % self.model.analysisinterval == 0:
                         average_analysis_data(self)
                 self.model.learningstep += 1
+
+                print('marker5')
 
             if self.trainingstep % self.model.saveinterval == 0:
                 save_model(self)
