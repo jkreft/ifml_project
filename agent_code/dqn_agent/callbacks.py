@@ -204,7 +204,7 @@ def setup(self):
     self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
     print(f'Cuda is{"" if T.cuda.is_available() else " not"} available.')
     self.logger.info(f'Cuda is{"" if T.cuda.is_available() else " not"} available.')
-
+    print('setupmarker1')
     # Adapt state-tensor to current task (bombs, other players, etc)
     channels = 3
     self.stateshape = (channels, s.cols, s.rows)
@@ -216,10 +216,11 @@ def setup(self):
     self.targetmodel.network_setup(channels=self.stateshape[0])
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
-
+    print('setupmarker2')
     # Load previous status from file or start training from the beginning
     if load_from_file:
         load_model(self)
+        print('Model loaded marker')
     else:
         # Setup new experience replay
         self.explay = Buffer(100000, self.stateshape, device=self.device)
@@ -234,9 +235,11 @@ def setup(self):
         self.trainingstep = 1
         self.model.learningstep = 1
         self.analysis = []
+        print('Model initialized marker')
 
     self.model.explay = self.explay
     self.targetmodel.explay = self.explay
+    print('Experience replay set up marker')
 
     self.logger.debug('Sucessfully completed setup code.')
 
