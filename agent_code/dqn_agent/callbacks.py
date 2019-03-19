@@ -151,7 +151,7 @@ def select_random_action(agent):
 
 ### Training/Learning ###
 
-def get_reward(events, rewardtab=None):
+def get_reward(agent, rewardtab=None):
     '''
     Calculate the reward for one single or a sequence of events (e.g. an episode)
     based on an optionally provided reward table. If the input ist a list of events,
@@ -160,6 +160,7 @@ def get_reward(events, rewardtab=None):
     :param rewardtab: A different reward table can be provided optionally.
     :return: The (cumulative) reward.
     '''
+    events = agent.events
     if type(events) is not type([]):
         events = [events]
     if not rewardtab:
@@ -265,8 +266,8 @@ def act(self):
                 self.laststate = None
                 self.lastaction = None
             #print('marker-train0')
-            # Calculate reward for the events that occurred in this step
-            self.stepreward = get_reward(self.events)
+            # Calculate reward for the events leading to this step
+            self.stepreward = get_reward(self)
             #print('marker-train1')
             # Construct and store experience tuple
             if self.lastaction is not None:
