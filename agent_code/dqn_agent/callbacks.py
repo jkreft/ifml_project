@@ -222,7 +222,7 @@ def setup(self):
         load_model(self)
     else:
         # Setup new experience replay
-        self.explay = Buffer(1000, self.stateshape)
+        self.explay = Buffer(100000, self.stateshape, device=self.device)
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
 
@@ -256,7 +256,8 @@ def act(self):
         self.stepaction = select_action(self)
 
         if self.training:
-            if self.trainingstep % 1000 == 0 or (self.trainingstep < 101 and self.trainingstep % 10 == 0):
+            t = self.trainingstep
+            if t % 1000 == 0 or (t < 101 and t % 10 == 0) or (t < 1001 and t % 100 == 0):
                 print(f'Training step {self.trainingstep}')
             # Check if this is the first step in episode and initialize variables
             if self.game_state['step'] == 1:
@@ -281,13 +282,13 @@ def act(self):
                 self.logger.debug('Learning step ...')
                 # Sample batch of batchsize from experience replay buffer
                 batch = self.explay.sample(self.model.batchsize)
-                batch.state = batch.state.to(self.device)
-                batch.action = batch.action.to(self.device)
+                #batch.state = batch.state.to(self.device)
+                #batch.action = batch.action.to(self.device)
 
 
                 # Non final check (like in pytorch RL tutorial)
-                nf = T.LongTensor([i for i in range(len(batch.nextstate)) if (batch.nextstate[i] == 0).sum().item() != np.prod(np.array(self.stateshape))])
-                nfnext = batch.nextstate[nf].to(self.device)
+                nf = T.LongTensor([i for i in range(len(batch.nextstate)) if (batch.nextstate[i] == 0).sum().item() != np.prod(np.array(self.stateshape))]).to(self.device)
+                nfnext = batch.nextstate[nf]
                 q = self.model(batch.state) # Get q-values from state using the model
                 q = q.gather(1, batch.action) # Put together with actions
                 nextq = T.zeros((len(batch.nextstate), len(self.poss_act))).cpu()
