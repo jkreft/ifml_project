@@ -49,6 +49,15 @@ class Buffer():
         self.pos += 1
 
 
+    def store_batch(self, es):
+        '''
+        Store an entire batch of new experiences in the buffer memory.
+        :param es: The batch of new buffer entries to be stored.
+        '''
+        for e in es:
+            self.store(e)
+
+
     def sample(self, samplesize):
         '''
         Take a subsample of defined size from the buffer memory. If samplesize is smaller than
@@ -83,17 +92,16 @@ class DQN(nn.Module):
         self.agent.poss_act = self.agent.s.actions
 
 
-    def network_setup(self, insize=17, channels=1, eps=(1, 0.1), minibatch=32, gamma=0.95, lr=0.001,
+    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), minibatch=32, gamma=0.95, lr=0.001,
                       lint=8, tint=1000, sint=50000, aint=False):
 
         ### Hyperparameters ###
-
+        totsteps = (self.agent.s.max_steps * self.agent.s.n_rounds) - self.agent.startlearning + 1
         self.eps = (                                                                # Match ε-decay to n_round
             eps[0],                                                                 # Starting value
             eps[1],                                                                 # Terminal value
-            (eps[1]-eps[0])/self.agent.s.n_rounds/self.agent.s.max_steps,           # Linear decay slope
-            np.log(eps[1]/eps[0])/self.agent.s.n_rounds/self.agent.s.max_steps)     # Exponential decay constant
-
+            (eps[1]-eps[0])/totsteps,                                               # Linear decay slope
+            np.log(eps[1]/eps[0])/totsteps)                                         # Exponential decay constant
         self.gamma = gamma                                                          # Discount factor
         self.learningrate = lr                                                      # Learning rate (alpha)
         self.batchsize = minibatch                                                  # Batch size for learning
@@ -129,6 +137,7 @@ class DQN(nn.Module):
 
         ### Loss function ###
         self.loss = nn.functional.mse_loss
+        self.stepsilon = 0
 
 
     def set_weights(self, random=True, file=False):
@@ -167,15 +176,17 @@ class DQN(nn.Module):
         :param decay: Type of decay for the ε-threshold {'lin', 'exp'}
         :return: True if decided to explore.
         '''
-        start, end, slope, exponent = self.eps
-
-        if fct == 'exp':
-            thresh = end + (start - end) * np.exp(exponent * self.agent.trainingstep)
-        elif fct == 'lin':
-            thresh = start + slope * self.agent.trainingstep
+        if self.agent.trainingstep <= self.agent.startlearning:
+            self.stepsilon = 0.1
         else:
-            print(f'Decay function: {fct} not known! Choosing linear decay instead.')
-            thresh = start + slope * self.agent.trainingstep
+            start, end, slope, exponent = self.eps
+            if fct == 'exp':
+                thresh = end + (start - end) * np.exp(exponent * self.agent.trainingstep)
+            elif fct == 'lin':
+                thresh = start + slope * self.agent.trainingstep
+            else:
+                print(f'Decay function: {fct} not known! Choosing linear decay instead.')
+                thresh = start + slope * self.agent.trainingstep
+            self.stepsilon = thresh
 
-        self.stepsilon = thresh
-        return True if np.random.random() < thresh else False
+        return True if np.random.random() < self.stepsilon else False

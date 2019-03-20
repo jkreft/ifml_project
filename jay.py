@@ -17,7 +17,7 @@ from settings import s
 
 
 ### Set mode ###
-training_mode = False
+training_mode = True
 on_server = False
 
 
