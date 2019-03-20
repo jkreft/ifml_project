@@ -246,7 +246,7 @@ def setup(self):
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
-    self.model.network_setup(channels=self.stateshape[0], aint=analysis_interval, sint=save_interval)
+    self.model.network_setup(channels=self.stateshape[0], aint=analysis_interval, sint=save_interval, tint=400)
     self.targetmodel.network_setup(channels=self.stateshape[0])
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
@@ -382,19 +382,19 @@ def act(self):
                     self.steploss.backward()
                     self.model.optimizer.step()
 
-                    if self.model.learningstep % self.model.targetinterval == 0:
-                        self.targetmodel.load_state_dict(self.model.state_dict())
-                    #print('marker4')
-                    self.model.learningstep += 1
+                if self.model.learningstep % self.model.targetinterval == 0:
+                    self.targetmodel.load_state_dict(self.model.state_dict())
+                #print('marker4')
+                self.model.learningstep += 1
 
-                # If analysisinterval True, save data and average over every interval
-                if self.model.analysisinterval:
-                    step_analysis_data(self)
-                    if self.trainingstep % self.model.analysisinterval == 0:
-                        average_analysis_data(self)
+            # If analysisinterval True, save data and average over every interval
+            if self.model.analysisinterval:
+                step_analysis_data(self)
+                if self.trainingstep % self.model.analysisinterval == 0:
+                    average_analysis_data(self)
 
-                if self.trainingstep % self.model.saveinterval == 0:
-                    save_model(self)
+            if self.trainingstep % self.model.saveinterval == 0:
+                save_model(self)
 
     except Exception as error:
         print('Exception in act()\n ' + str(error))
