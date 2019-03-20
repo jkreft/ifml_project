@@ -1,8 +1,8 @@
 #!/bin/sh
 
-#PBS -q batch
+#PBS -q cuda
 #PBS -N ifml-pytorch
-#PBS -l ncpus=4
+#PBS -l nodes=denbi2-int
 #PBS -V
 #PBS -M jakob@kreft-mail.de
 #PBS -m bea
