@@ -17,7 +17,7 @@ class Buffer():
     Allows to take a random sample of defined maximal size from the buffer for learning.
     '''
 
-    def __init__(self, buffersize, stateshape):
+    def __init__(self, buffersize, stateshape, device=T.device('cpu')):
         self.buffersize = buffersize
         self.pos = 0
         self.fullness = 0
@@ -61,7 +61,7 @@ class Buffer():
                 self.state = buffer.state[idcs]
                 self.action = buffer.action[idcs]
                 self.reward = buffer.reward[idcs]
-                self.nextstate = buffer.nextstate[[idcs]]
+                self.nextstate = buffer.nextstate[idcs]
 
         s = len(self) if samplesize > len(self) else samplesize
         si = np.random.choice(len(self), s)
@@ -83,7 +83,7 @@ class DQN(nn.Module):
         self.agent.poss_act = self.agent.s.actions
 
 
-    def network_setup(self, channels=1, eps=(1, 0.1), minibatch=32, gamma=0.95, lr=0.001,
+    def network_setup(self, insize=17, channels=1, eps=(1, 0.1), minibatch=32, gamma=0.95, lr=0.001,
                       lint=8, tint=1000, sint=50000, aint=False):
 
         ### Hyperparameters ###
@@ -108,15 +108,16 @@ class DQN(nn.Module):
 
         ## Network architecture ###
 
-        self.conv1 = nn.Conv2d(channels, 32, kernel_size=2, stride=1)
+        def conv_out(insize, ks=2, s=1):
+            return (insize - (ks - 1) - 1) // s + 1
+
+        self.conv1 = nn.Conv2d(channels, 16, kernel_size=3, stride=2)
         self.relu1 = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=2, stride=1)
         self.relu2 = nn.ReLU(inplace=True)
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=1)
-        self.relu3 = nn.ReLU(inplace=True)
-        self.fc4 = nn.Linear(3136, 512)
+        self.fc4 = nn.Linear(32*conv_out(conv_out(insize, ks=2, s=1), ks=3, s=2)**2, 256)
         self.relu4 = nn.ReLU(inplace=True)
-        self.fc5 = nn.Linear(512, len(self.agent.poss_act))
+        self.fc5 = nn.Linear(256, len(self.agent.poss_act))
         self.agent.logger.info('DQN is set up.')
         self.agent.logger.debug(self)
 
@@ -154,7 +155,6 @@ class DQN(nn.Module):
         '''
         interm = self.relu1(self.conv1(input))
         interm = self.relu2(self.conv2(interm))
-        interm = self.relu3(self.conv3(interm))
         interm = self.relu4(self.fc4(interm.view(interm.size(0), -1)))
         output = self.fc5(interm)
         return output

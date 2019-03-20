@@ -19,9 +19,9 @@ from settings import s, e
 
 training_mode = True
 load_from_file = False
-analysis_interval = 300
-save_interval = 50000
-start_learning = 25000
+analysis_interval = 500
+save_interval = 500000
+start_learning = 200000
 
 
 
@@ -229,7 +229,7 @@ def setup(self):
         load_model(self)
     else:
         # Setup new experience replay
-        self.explay = Buffer(100000, self.stateshape)
+        self.explay = Buffer(500000, self.stateshape)
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
 
