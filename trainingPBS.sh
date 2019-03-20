@@ -1,6 +1,5 @@
 #!/bin/sh
 
-#PBS -q batch
 #PBS -N ifml-pytorch
 #PBS -l ncpus=4
 #PBS -V
