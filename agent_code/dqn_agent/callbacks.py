@@ -19,9 +19,9 @@ from settings import s, e
 
 training_mode = True
 load_from_file = False
-analysis_interval = 500
-save_interval = 500000
-start_learning = 200000
+analysis_interval = 1250
+save_interval = 50000
+start_learning = 25000
 
 
 
@@ -37,7 +37,7 @@ def load_model(agent, filepath=False):
             d = './models/load/'
             # Choose first file in directory d
             filepath = d + [x for x in os.listdir(d) if os.path.isfile(d + x)][0]
-        data = T.load(filepath)
+        data = T.load(filepath, map_location=agent.device)
         agent.model.load_state_dict(data['model'])
         agent.targetmodel.load_state_dict(data['model'])
         agent.model.optimizer.load_state_dict(data['optimizer'])
@@ -75,6 +75,7 @@ class Analysisbuffer:
         self.epsilon = []
         self.explored = []
         self.loss = []
+        self.q = []
 
 
 def step_analysis_data(agent):
@@ -83,7 +84,7 @@ def step_analysis_data(agent):
     agent.analysisbuffer.epsilon.append(agent.model.stepsilon)
     agent.analysisbuffer.explored.append(agent.explored)
     agent.analysisbuffer.loss.append(agent.steploss.detach().numpy())
-
+    agent.analysisbuffer.q.append(agent.stepq.detach().numpy())
 
 def average_analysis_data(agent):
     buffer = agent.analysisbuffer
@@ -93,7 +94,8 @@ def average_analysis_data(agent):
         'reward': np.array(buffer.reward).mean(),
         'epsilon': np.array(buffer.epsilon).mean(),
         'explored': np.array(buffer.explored).mean(),
-        'loss': np.array(buffer.loss).mean()
+        'loss': np.array(buffer.loss).mean(),
+        'q': np.array(buffer.q).mean
     }
     agent.analysis.append(avgdata)
     agent.analysisbuffer = Analysisbuffer()
@@ -102,7 +104,11 @@ def average_analysis_data(agent):
 ### Deciding on Actions ###
 
 def construct_state_tensor(agent):
-    # Create state tensor from game_state data
+    '''
+    Create image-like (pixel-based) state tensor from game_state data.
+    :param agent: Agent object.
+    :return: State tensor (on cuda if available).
+    '''
     state = T.zeros(agent.stateshape)
     # Represent the arena (walls, ...)
     state[0] = T.from_numpy(agent.game_state['arena'])
@@ -123,8 +129,22 @@ def construct_state_tensor(agent):
         state = state.cuda()
     return state
 
+def construct_reduced_state_tensor(agent):
+    '''
+    Create reduced state tensor from game_state data.
+    :param agent: Agent object.
+    :return: State tensor (on cuda if available).
+    '''
+    state = T.zeros(agent.reducedstateshape)
 
-def select_action(agent):
+
+    if T.cuda.is_available():
+        state = state.cuda()
+    return state
+
+
+
+def select_action(agent, rolemodel=False):
     '''
     Selects one of the possible actions based on the networks decision's (or randomly).
     :return: The chosen action {'UP', 'DOWN', 'LEFT', 'RIGHT', 'BOMB', 'WAIT'}
@@ -143,8 +163,13 @@ def select_action(agent):
             agent.logger.debug('Exploring: Chose ' + str(action))
         else:
             agent.explored = 0
-            action = policy(agent)
-            agent.logger.debug('Using policy: Chose ' + str(action))
+            if rolemodel:
+                rolemodel.act(agent)
+                action = T.tensor(agent.poss_act.index(agent.next_action))
+                agent.logger.debug('Using rolemodel: Chose ' + str(action))
+            else:
+                action = policy(agent)
+                agent.logger.debug('Using policy: Chose ' + str(action))
     else:
         action = policy(agent)
     return action.to(agent.device)
@@ -157,7 +182,7 @@ def select_random_action(agent):
 
 ### Training/Learning ###
 
-def get_reward(agent, rewardtab=None):
+def get_cookies(agent, rewardtab=None):
     '''
     Calculate the reward for one single or a sequence of events (e.g. an episode)
     based on an optionally provided reward table. If the input ist a list of events,
@@ -174,10 +199,10 @@ def get_reward(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, -2, -10, -2, 0, 0, 0, +20, +60, 0, 0, 0, 0, 0]
+        rewardtab = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, +1, 0, 0, 0, 0, 0]
 
     # Initialize reward, loop through events, and add up rewards
-    reward = -1
+    reward = -0.001
     for event in events:
         reward += rewardtab[event]
     return reward
@@ -216,6 +241,7 @@ def setup(self):
     # Adapt state-tensor to current task (bombs, other players, etc)
     channels = 3
     self.stateshape = (channels, s.cols, s.rows)
+    self.reducedstateshape = ()
 
     # Create and setup model and target DQNs
     self.model = DQN(self)
@@ -229,9 +255,10 @@ def setup(self):
         load_model(self)
     else:
         # Setup new experience replay
-        self.explay = Buffer(500000, self.stateshape)
+        self.explay = Buffer(80000, self.stateshape)
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
+        self.logger.info('Modelname:' + self.modelname)
 
         # Initialize model DQN and target DQN weights randomly
         self.model.set_weights(random=True)
@@ -245,6 +272,7 @@ def setup(self):
 
     self.model.explay = self.explay
     self.targetmodel.explay = self.explay
+    self.episodeseq = []
 
     # Setting up simple_agent as "role model" for collecting good training data in the first steps
     rolemodel.setup(self)
@@ -280,22 +308,23 @@ def act(self):
                 if t == 1:
                     self.laststate = None
                     self.lastaction = None
+                    self.lastevents = None
                 # Choose random action
-                rolemodel.act(self)
-                self.stepaction = T.tensor(['RIGHT', 'LEFT', 'UP', 'DOWN', 'WAIT'].index(self.next_action)).to(self.device)
+                self.stepaction = select_action(self, rolemodel=rolemodel)
             else:
                 # Choose next action
                 self.stepaction = select_action(self)
 
             # Calculate reward for the events leading to this step
-            self.stepreward = get_reward(self)
+            self.stepreward = get_cookies(self)
             # Construct and store experience tuple
             if self.lastaction is not None:
                 s, a, r, n = construct_experience(self)
-                self.explay.store([s, a, r, n])
+                self.episodeseq.append([s, a, r, n, self.lastevents])
             # Update state and action variables
             self.laststate = self.stepstate
             self.lastaction = self.stepaction
+            self.lastevents = self.events
 
             if t > self.startlearning:
                 if t % self.model.learninginterval == 0:
@@ -317,8 +346,8 @@ def act(self):
                         batch.action = batch.action.cuda()
                         nfnext = nfnext.cuda()
 
-                    q = self.model(batch.state) # Get q-values from state using the model
-                    q = q.gather(1, batch.action) # Put together with actions
+                    self.stepq = self.model(batch.state) # Get q-values from state using the model
+                    self.stepq = self.stepq.gather(1, batch.action) # Put together with actions
                     nextq = T.zeros((len(batch.nextstate), len(self.poss_act))).cpu()
                     nfnextq = self.targetmodel(nfnext).cpu()
                     #print('marker1')
@@ -329,7 +358,7 @@ def act(self):
 
                     # Expected q-values for current state
                     expectedq = ( (nextq * self.model.gamma) + batch.reward ).to(self.device)
-                    self.steploss = self.model.loss(q, expectedq)
+                    self.steploss = self.model.loss(self.stepq, expectedq)
                     self.steploss = self.steploss.cpu()
                     batch.state = batch.state.cpu()
                     batch.action = batch.action.cpu()
@@ -388,5 +417,18 @@ def end_of_episode(self):
     When in training mode, called at the end of each episode.
     :param agent: Agent object.
     '''
+    finalscoretab = [0,0,0,0,0,0,0,0,0,0,0,+1,0,0,0,+5,0]
+    finalscore = 0
+    for E in [x[4] for x in self.episodeseq]:
+        for e in E:
+            finalscore += finalscoretab[e]
+    self.logger.debug(f'Final score was: {finalscore}')
+
+    for i in range(len(self.episodeseq)):
+        r = self.episodeseq[i][2]
+        r += finalscore/10
+        self.episodeseq[i][2] = r
+
+    self.model.explay.store_batch(self.episodeseq)
     self.trainingstep += 1
-    # Save parameters / weights to file?
+    self.episodeseq = []
