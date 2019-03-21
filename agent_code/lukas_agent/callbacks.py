@@ -7,33 +7,35 @@ import random
 import gym
 
 from settings import s, e # settings and events
-from agent_code.lukas_agent.model import DecisionTree, GBM
-from agent_code.lukas_agent.model import RegressionForest
+from agent_code.lukas_agent.model import RegressionForest, GBM
 
-# Looging 
+from agent_code.lukas_agent.model import Buffer
+
+# Logging 
 LOGGING = True
-DEBUGGING = False
+DEBUGGING = True
 PRINTING = False
 
 # constants / hyperparameter
 GAMMA = 0.95
-LEARNING_RATE = 0.2#0.2 # 0.001
+LEARNING_RATE = 0.05#0.2 # 0.001
 
 EPSILON_MAX = 1
-EPSILON_MIN = 0.05
-EPSILON_DECAY = 0.90 #0.96
+EPSILON_MIN = 0.1
+EPSILON_DECAY = 0.96 #0.96
 
-BUFFER_SIZE = 2000
+BUFFER_SIZE = 1000
 BATCH_SIZE = 100#20
 
 # addition
 ACTION_SPACE = np.array(['UP', 'DOWN', 'LEFT', 'RIGHT', 'WAIT'])
+#ACTION_SPACE = np.array(['LEFT', 'RIGHT'])
 
 # Parameters to controll model
 # param = {}
-STATE_VERSION = 3
+STATE_VERSION = 2
 #           max tree leaves | max tree depth | self implemented | #boosted trees to fit | #samples for constr. bin | 
-gbm_args = {'num_leaves':31, 'max_depth':-1, 'learning_rate':1, 'n_estimators':100,     'subsample_for_bin':20000,
+gbm_args = {'num_leaves':31, 'max_depth':-1, 'learning_rate':0.1, 'n_estimators':100,     'subsample_for_bin':20000,
              'class_weight':None}
 #           dont need this    
 
@@ -47,11 +49,13 @@ def setup(self):
     self.train = s.training # training is active
     if LOGGING: self.logger.info("Training-mode is: " + str(self.train))
     
-    self.buffer = deque(maxlen=BUFFER_SIZE)
+    #self.buffer = deque(maxlen=BUFFER_SIZE)
+    self.buffer = Buffer(BUFFER_SIZE)
     self.action_space = ACTION_SPACE
     
     # initialize model
-    self.model = RegressionForest() #GBM(gbm_args) #(**rf_argsm)
+    self.model = GBM(gbm_args)
+    #self.model = RegressionForest() 
     self.isFit = False
     self.load_data = True
     self.step = 0
@@ -67,6 +71,7 @@ def setup(self):
             self.model.fit(states_fit, q_values_fit)
             if LOGGING: self.logger.info("Model has been fitted successfully")
             self.isFit = True
+            print("Fitted tree with training data.")
         except IOError:
             if LOGGING: self.logger.info("No training data found, continue without fit.")
             print("File does not exist, continue without fit.")
@@ -134,16 +139,16 @@ def get_current_state(self, state_version = STATE_VERSION):
         #    state[0, 2, coin[0], coin[1]] = 1
             
         state = np.zeros((3, 17, 17))
-        state[0] = arena
+        state[0] = self.game_state['arena']
         state[1, self.game_state['self'][0], self.game_state['self'][1]] = 1
         for coin in self.game_state['coins']:
             state[2, coin[0], coin[1]] = 1
         
         #state = state.reshape(3, 17*17)
-        state = state.reshape(3, 17*17)
+        state = state.reshape(3, 17*17).flatten()
     
         #print("so sieht der geflattete state aus: ", state.shape)
-        return state
+        return np.atleast_2d(state)
     
     if state_version == 3:
         ### agent position:
@@ -201,13 +206,11 @@ def get_current_state(self, state_version = STATE_VERSION):
         state = np.atleast_2d(np.array([x, y, u, r, d, l, *coins_state[0]]))#, *coins_state[1]]))
         #print("state:", state)
         return np.array(state)
-
-# TODO: shoud I add the q_values
-def to_buffer(self, s, a, r, n_s, terminal):
-    ''' append new entry to the buffer
-        add s: state, a: action, r: reward, n_s: next state, terminal: if the next_state is terminal
-    '''
-    self.buffer.append((s, a, r, n_s, terminal))
+    if state_version == 4:
+        x, y, name, bombs_left, score = self.game_state['self']
+        
+        state = np.array([x,y])
+        return np.atleast_2d(state)
 
 def select_action(self, state, isFit):
     action_index = 4  # default value 'Wait'
@@ -232,7 +235,7 @@ def act(self):
     # chose next action
     action_index = 4 # default action "Wait"
     # epsilon-greedy
-    if np.random.rand() < self.exploration_rate:        
+    if np.random.rand() < self.exploration_rate and self.train:        
         action_index =  np.random.randint(len(self.action_space))
         if LOGGING: self.logger.info("Pick action with exploration, at rate: " + str(self.exploration_rate))
         #print("exploration, with rate:", self.exploration_rate)
@@ -256,9 +259,17 @@ def reward_update(self):
     if e.GOT_KILLED in self.events or e.KILLED_SELF in self.events or e.SURVIVED_ROUND in self.events: #check for terminal events
         if PRINTING: print("This is a terminal state")
         terminal = True
-        
+    
+    q_values = None
+    if self.isFit:
+        q_values = self.model.predict(self.state)
+    else:
+        q_values = np.zeros(len(self.action_space))
+    
+    q_values = get_q_update(q_values, action, reward, next_state)
+    
     #               last state | choosen action  | reward of next state | next state             | is state terminal
-    to_buffer(self, self.state,  self.next_action, compute_reward(self),  get_current_state(self), terminal)
+    self.buffer.store([self.state,  self.next_action, compute_reward(self),  get_current_state(self), q_values, terminal])
     
     # TODO: how to save the q-values?
     # Online update rule for 1-step TD-value estimation:
@@ -273,80 +284,78 @@ def reward_update(self):
     
     #self.rewards = np.vstack((self.rewards, reward))  
 
-def compute_reward(self): 
+# def compute_reward(self): 
+#     reward = -1
+#     for event in self.events:
+#         if event == e.BOMB_DROPPED:
+#             reward += 0
+#         elif event == e.COIN_COLLECTED:
+#             reward += 100
+#         elif event == e.CRATE_DESTROYED:
+#             reward += 10 # 30
+#         elif event == e.KILLED_SELF:
+#             reward += 0
+#         elif event == e.KILLED_OPPONENT:
+#             reward += 100
+#         elif event == e.GOT_KILLED:
+#             reward += -300
+#         elif event == e.WAITED:
+#             reward += -5
+#         elif event == e.INVALID_ACTION:
+#             reward += -10
+#         elif event == e.SURVIVED_ROUND:
+#             reward += 0
+#     #if PRINTING: print("events:", self.events, "current reward:", reward)
+#     return reward ######### * GAMMA**self.game_state['step'] # Discounted Reward
+
+def compute_reward(self):
     reward = -1
     for event in self.events:
-        if event == e.BOMB_DROPPED:
-            reward += 0
-        elif event == e.COIN_COLLECTED:
-            reward += 100
-        elif event == e.CRATE_DESTROYED:
-            reward += 10 # 30
-        elif event == e.KILLED_SELF:
-            reward += 0
-        elif event == e.KILLED_OPPONENT:
-            reward += 100
-        elif event == e.GOT_KILLED:
-            reward += -300
-        elif event == e.WAITED:
-            reward += -5
-        elif event == e.INVALID_ACTION:
-            reward += -10
-        elif event == e.SURVIVED_ROUND:
-            reward += 0
-    #return reward
-    return reward * GAMMA**self.game_state['step'] # Discounted Reward
-    
-    #print("events:"self.events)
-    #print("current reward:", reward)
+        if event == e.MOVED_RIGHT:
+            reward += 10
+        if event == e.MOVED_DOWN:
+            reward += 10
+    return reward
 
-def end_of_episode(self):
+def end_of_episode(self): 
     # if the list of states is to short, just skip the evaluation
     if len(self.buffer) < BATCH_SIZE:
         return
     # otherwise pick a list of samples of the whole buffer size out 
     ######batch = random.sample(self.buffer, int(len(self.buffer)/1)) #original
-    batch = random.sample(self.buffer, int(BATCH_SIZE))
-    #print("Vergleich: \t erster Eintrag im batch:", batch[0], "\n\t\tund der erste Eintrag im buffer:", self.buffer[0],
-    #      "\nund ein vergleich der Laengen: batch:", len(batch), "buffer:", len(self.buffer))
+    #batch = random.sample(self.buffer, int(BATCH_SIZE))
     
-    #print("the whole buffer:", self.buffer)
+    batch = self.buffer.sample(int(BATCH_SIZE))
+
+    #print("Vergleich: \t erster Eintrag im batch:", batch[0], "\n\t\tund der erste Eintrag im buffer:", self.buffer.memory[0],
+    #      "\nund ein vergleich der Laengen: batch:", len(batch), "buffer:", self.buffer.len)
+    
+    #print("the whole buffer:", self.buffer.memory)
     
     states_fit = []
     q_values_fit = []
     # go through all entries in batch
-    for state, action, reward, next_state, terminal in batch:
+    for state, action, reward, next_state, q_values, terminal in batch:
         
-        # calculate Q-update values
-        q_update = 0
-        if not terminal: # does not matter for terminal states, since the reward is 0 and the next state does not exist
-            if self.isFit:
-                q_update = (reward + GAMMA * np.amax(self.model.predict(next_state)[0]))
-                #print("Predict value of next state:", self.model.predict(state_next))
-                if DEBUGGING: self.logger.debug("not terminal, isFit: q update: " + str(q_update))
-            # if the model isn't fitted yet
-            else:
-                q_update = reward 
-                #print(str(q_update))
-                if DEBUGGING: self.logger.debug("not terminal, not isFit: q update: " + str(q_update))
-                
-        if self.isFit:
-            q_values = self.model.predict(state)
-            if DEBUGGING: self.logger.debug("general, isFit: q-values: " + str(q_values))
-        else:
-            q_values = np.zeros(self.action_space.shape).reshape(1, -1)
-            if DEBUGGING: self.logger.debug("general, not isFit: q-values: "+ str(q_values))
+        #if self.isFit:
+        #    q_values = self.model.predict(state)
+        #    if DEBUGGING: self.logger.debug("general, isFit: q-values: " + str(q_values))
+        #else:
+        #    #print("noch nicht gefittet.")
+        #    q_values = np.zeros(self.action_space.shape).reshape(1, -1)
+        #    #print("q_values: ", q_values)
+        #    if DEBUGGING: self.logger.debug("general, not isFit: q-values: "+ str(q_values))
 
-        action_id = np.argwhere(self.action_space == action)[0][0] # get the index of the selected action in the action space
-        #print("index of current action", action_id)
+        q_values = get_q_update(q_values, action, reward, next_state)
         
-        # change the actual function
-        #q_values[0][action_id] = q_update
-        q_values[0][action_id] = q_values[0][action_id] + LEARNING_RATE * (q_update - q_values[0][action_id])
-        #print("######## state[0]:", state[0], "\n######## q_values[0]", q_values[0])
-        states_fit.append(list(state[0])) # TODO: not sure about the indices
-        q_values_fit.append(q_values[0])   
+        states_fit.append(state[0]) # TODO: not sure about the indices
+        q_values_fit.append(q_values[0])
+        
+        #print("######## state[0]:", state.shape, "\n######## q_values[0]", q_values.shape)
+   
     
+    #print(np.array(states_fit).shape, np.array(q_values_fit[0]).shape)
+    #print(q_values_fit)
     self.model.fit(states_fit, q_values_fit)
     
     self.isFit = True
@@ -364,6 +373,25 @@ def end_of_episode(self):
     #self.model.fit(self.observations, self.rewards.ravel())
     #self.observations = np.zeros((0,3))
     #self.rewards = np.zeros((0,1))                   
+
+def get_q_update(self, q_values, action, reward, next_state):
+    action_id = np.argwhere(self.action_space == action)[0][0] # get the index of the selected action in the action space
+    q_update = 0
+    if not terminal: # does not matter for terminal states, since the reward is 0 and the next state does not exist
+        if self.isFit:
+            q_update = (reward + GAMMA * np.amax(self.model.predict(next_state)[0]))
+            #print("Predict value of next state:", self.model.predict(state_next))
+            if DEBUGGING: self.logger.debug("not terminal, isFit: q update: " + str(q_update))
+        # if the model isn't fitted yet
+        else:
+            q_update = reward
+            #print(str(q_update))
+            if DEBUGGING: self.logger.debug("not terminal, not isFit: q update: " + str(q_update))
+    
+    q_values[0][action_id] = q_values[0][action_id] + LEARNING_RATE * (q_update - q_values[0][action_id])
+        
+    return q_update
+    
 
 def look_for_targets(free_space, start, targets, max_count = 2, logger=None):
     """Find direction of closest target that can be reached via free tiles.
@@ -406,6 +434,8 @@ def look_for_targets(free_space, start, targets, max_count = 2, logger=None):
                 parent_dict[neighbor] = current
                 dist_so_far[neighbor] = dist_so_far[current] + 1
     if logger: logger.debug(f'Suitable target found at {best}')
+    # Determine the first step towards the best found target tile
+    current = best
     return best
 
 ###### for testing:

@@ -118,6 +118,7 @@ class BombeRLeWorld(object):
 
         # Starting positions
         self.start_positions = [(1,1), (1,s.rows-2), (s.cols-2,1), (s.cols-2,s.rows-2)]
+        ### self.start_positions = [(8,7), (8,7), (8,7), (8,7)]
         random.shuffle(self.start_positions)
         for (x,y) in self.start_positions:
             for (xx,yy) in [(x,y), (x-1,y), (x+1,y), (x,y-1), (x,y+1)]:
