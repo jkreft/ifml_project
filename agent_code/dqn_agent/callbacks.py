@@ -95,7 +95,7 @@ def average_analysis_data(agent):
         'epsilon': np.array(buffer.epsilon).mean(),
         'explored': np.array(buffer.explored).mean(),
         'loss': np.array(buffer.loss).mean(),
-        'q': np.array(buffer.q).mean
+        'q': np.array(buffer.q).mean()
     }
     agent.analysis.append(avgdata)
     agent.analysisbuffer = Analysisbuffer()

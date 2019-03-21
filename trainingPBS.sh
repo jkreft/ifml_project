@@ -5,7 +5,6 @@
 #PBS -N ifml-pytorch
 #PBS -l nodes=denbi2-int
 #PBS -l ncpus=4
-#PBS -l walltime=8:00:00:00
 #PBS -M jakob@kreft-mail.de
 #PBS -m bea
 #PBS -e ~/ifml/qsub/stderr.err
