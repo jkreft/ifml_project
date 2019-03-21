@@ -16,13 +16,13 @@ from settings import s, e
 
 
 ### Flags for choosing in which settings to run ###
-
+resume_training = False
 training_mode = False if s.gui else True
-load_from_file = False
-analysis_interval = 500
-save_interval = 50000
-start_learning = 0
-replay_buffer_size = 100000
+load_from_file = resume_training if training_mode else True
+analysis_interval = 100
+save_interval = 200000
+start_learning = 199399
+replay_buffer_size = 400000
 #home = '/home/phaetjay/'
 #home = '/home/jakob/'
 home = os.path.expanduser("~") + '/'
@@ -227,10 +227,10 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        rewardtab = [0, 0, 0, 0, 0, 0, -0.1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
 
     # Initialize reward, loop through events, and add up rewards
-    reward = 0
+    reward = -0.01
     for event in events:
         reward += rewardtab[event]
     return reward
@@ -442,7 +442,7 @@ def end_of_episode(self):
     :param agent: Agent object.
     '''
     #finalscoretab = [0,0,0,0,0,0,0,0,0,0,0,+1,0,0,0,+5,0]
-    finalscore = 0 #self.game_state['self'][4]
+    finalscore = self.game_state['self'][4]
     self.logger.info(f'Final score was: {finalscore}')
 
     for i in range(len(self.episodeseq)):
