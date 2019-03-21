@@ -3,9 +3,9 @@
 #PBS -S /bin/bash
 #PBS -q cuda
 #PBS -N ifml-pytorch
-#PBS -l nodes=denbi1-int
-#PBS -l walltime=4:00:00:00
-#PBS -l cput=300:00:00
+#PBS -l nodes=denbi2-int
+#PBS -l ppn=4
+#PBS -l walltime=8:00:00:00
 #PBS -M jakob@kreft-mail.de
 #PBS -m bea
 #PBS -e ~/ifml/qsub/stderr.err

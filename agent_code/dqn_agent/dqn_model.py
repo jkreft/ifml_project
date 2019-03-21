@@ -92,7 +92,7 @@ class DQN(nn.Module):
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), minibatch=32, gamma=0.95, lr=0.001,
+    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), minibatch=42, gamma=0.95, lr=0.001,
                       lint=8, tint=1000, sint=50000, aint=False):
 
         ### Hyperparameters ###

@@ -19,9 +19,9 @@ from settings import s, e
 
 training_mode = True
 load_from_file = False
-analysis_interval = 500
-save_interval = 50000
-start_learning = 25000
+analysis_interval = 1000
+save_interval = 400000
+start_learning = 100000
 
 
 
@@ -246,7 +246,7 @@ def setup(self):
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
-    self.model.network_setup(channels=self.stateshape[0], aint=analysis_interval, sint=save_interval, tint=400)
+    self.model.network_setup(channels=self.stateshape[0], aint=analysis_interval, sint=save_interval, tint=2000)
     self.targetmodel.network_setup(channels=self.stateshape[0])
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
@@ -255,7 +255,7 @@ def setup(self):
         load_model(self)
     else:
         # Setup new experience replay
-        self.explay = Buffer(80000, self.stateshape)
+        self.explay = Buffer(500000, self.stateshape)
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
         self.logger.info('Modelname:' + self.modelname)
