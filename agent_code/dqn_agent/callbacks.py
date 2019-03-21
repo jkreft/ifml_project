@@ -84,7 +84,7 @@ def step_analysis_data(agent):
     agent.analysisbuffer.epsilon.append(agent.model.stepsilon)
     agent.analysisbuffer.explored.append(agent.explored)
     agent.analysisbuffer.loss.append(agent.steploss.detach().numpy())
-    agent.analysisbuffer.q.append(agent.stepq.detach().numpy())
+    agent.analysisbuffer.q.append(agent.stepq.cpu().detach().numpy())
 
 def average_analysis_data(agent):
     buffer = agent.analysisbuffer
