@@ -3,10 +3,7 @@
 #PBS -S /bin/bash
 #PBS -q cuda
 #PBS -N ifml-pytorch
-#PBS -l nodes=denbi2-int
-#PBS -l ncpus=4
-#PBS -M jakob@kreft-mail.de
-#PBS -m bea
+#PBS -l nodes=denbi1-int
 #PBS -e ~/ifml/qsub/stderr.err
 #PBS -o ~/ifml/qsub/stdout.log
 
