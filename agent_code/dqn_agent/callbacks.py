@@ -23,8 +23,9 @@ analysis_interval = 500
 save_interval = 50000
 start_learning = 0
 replay_buffer_size = 100000
-home = '/home/phaetjay/'
+#home = '/home/phaetjay/'
 #home = '/home/jakob/'
+home = os.path.expanduser("~") + '/'
 
 
 
@@ -84,7 +85,7 @@ def save_model(agent):
     if not os.path.exists(home + 'explay/saved/'):
         if not os.path.exists(home + 'explay/'):
             os.mkdir(home + 'explay/')
-        os.mkdir(home + 'explays/saved/')
+        os.mkdir(home + 'explay/saved/')
     print(f'Saved model at step {agent.trainingstep}. Filename: {modelpath}')
     explaypath = home + 'explay/saved/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
                + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
@@ -111,6 +112,7 @@ def step_analysis_data(agent):
     agent.analysisbuffer.explored.append(agent.explored)
     agent.analysisbuffer.loss.append(agent.steploss.detach().numpy())
     agent.analysisbuffer.q.append(agent.stepq.cpu().detach().numpy())
+
 
 def average_analysis_data(agent):
     buffer = agent.analysisbuffer
@@ -296,7 +298,7 @@ def setup(self):
         self.analysis = []
 
     self.steploss = T.tensor(0)
-    self.stepq = T.tensor(0)
+    self.stepq = T.zeros((1, self.model.batchsize))
     self.laststate = None
     self.lastaction = None
     self.lastevents = None
