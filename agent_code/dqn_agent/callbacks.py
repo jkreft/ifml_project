@@ -17,11 +17,14 @@ from settings import s, e
 
 ### Flags for choosing in which settings to run ###
 
-training_mode = True
+training_mode = False if s.gui else True
 load_from_file = False
 analysis_interval = 1000
-save_interval = 400000
-start_learning = 100000
+save_interval = 200000
+start_learning = 80000
+replay_buffer_size = 300000
+#home = '/home/phaetjay/'
+home = '/home/jakob/'
 
 
 
@@ -31,31 +34,46 @@ start_learning = 100000
 
 ### Loading and Saving Models and Data ###
 
-def load_model(agent, filepath=False):
+def load_model(agent, modelpath=False, explaypath=False):
     try:
-        if filepath == False:
-            d = './models/load/'
+        if modelpath == False:
+            d = home + 'models/load/model/'
             # Choose first file in directory d
-            filepath = d + [x for x in os.listdir(d) if os.path.isfile(d + x)][0]
-        data = T.load(filepath, map_location=agent.device)
+            modelpath = d + [x for x in os.listdir(d)][0]
+        data = T.load(modelpath, map_location=agent.device)
         agent.model.load_state_dict(data['model'])
         agent.targetmodel.load_state_dict(data['model'])
         agent.model.optimizer.load_state_dict(data['optimizer'])
         agent.analysis = data['analysis']
-        agent.modelname = filepath.split('/')[-1].split('.pth')[0]
-        agent.explay = data['explay']
+        agent.modelname = modelpath.split('/')[-1].split('.pth')[0]
         agent.trainingstep = data['trainingstep']
         agent.logger.info(f'Model was loaded from file at step {agent.trainingstep}')
         print(f'Model was loaded from file at step {agent.trainingstep}')
+        if training_mode:
+            if modelpath == False:
+                d = home + 'models/load/explay/'
+                # Choose first file in directory d
+                explaypath = d + [x for x in os.listdir(d)][0]
+            data = T.load(explaypath)
+            agent.explay = data['explay']
+            agent.logger.info('Experience replay buffer was loaded from file.')
+            print('Experience replay buffer was loaded from file.')
+        else:
+            agent.logger.info('Loaded model without Experience replay buffer.')
+            print('Loaded model without Experience replay buffer.')
+
     except Exception as error:
-        agent.logger.info(f'No file could be found. Error: {error}\nModel was not loaded!')
-        print(f'No file could be found. Error: {error}\nModel was not loaded!')
+        agent.logger.info(f'A file could not be found. Error: {error}\nModel and buffer were not loaded!')
+        print(f'A file could not be found. Error: {error}\nModel and buffer were not loaded!')
 
 
 def save_model(agent):
-    if not os.path.exists('./models'):
-        os.mkdir('./models')
-    filename = './models/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
+    if not os.path.exists(home + 'models/saved/'):
+        if not os.path.exists(home + 'models/'):
+            os.mkdir(home + 'models/')
+        os.mkdir(home + 'models/saved/')
+
+    filename = home + 'models/saved/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
                + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
     T.save({
         'model': agent.model.state_dict(),
@@ -199,10 +217,10 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, +1, 0, 0, 0, 0, 0]
+        rewardtab = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
     # Initialize reward, loop through events, and add up rewards
-    reward = -0.001
+    reward = -0.05
     for event in events:
         reward += rewardtab[event]
     return reward
@@ -246,7 +264,7 @@ def setup(self):
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
-    self.model.network_setup(channels=self.stateshape[0], aint=analysis_interval, sint=save_interval, tint=2000)
+    self.model.network_setup(channels=self.stateshape[0], aint=analysis_interval, sint=save_interval, tint=2500, lr=0.0001)
     self.targetmodel.network_setup(channels=self.stateshape[0])
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
@@ -255,7 +273,7 @@ def setup(self):
         load_model(self)
     else:
         # Setup new experience replay
-        self.explay = Buffer(500000, self.stateshape)
+        self.explay = Buffer(replay_buffer_size, self.stateshape)
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
         self.logger.info('Modelname:' + self.modelname)
@@ -415,12 +433,12 @@ def end_of_episode(self):
     When in training mode, called at the end of each episode.
     :param agent: Agent object.
     '''
-    finalscoretab = [0,0,0,0,0,0,0,0,0,0,0,+1,0,0,0,+5,0]
-    finalscore = 0
-    for E in [x[4] for x in self.episodeseq]:
-        for e in E:
-            finalscore += finalscoretab[e]
-    self.logger.debug(f'Final score was: {finalscore}')
+    #finalscoretab = [0,0,0,0,0,0,0,0,0,0,0,+1,0,0,0,+5,0]
+    finalscore = self.game_state['self'][4]
+    #for E in [x[4] for x in self.episodeseq]:
+    #   for e in E:
+    #       finalscore += finalscoretab[e]
+    self.logger.info(f'Final score was: {finalscore}')
 
     for i in range(len(self.episodeseq)):
         r = self.episodeseq[i][2]
