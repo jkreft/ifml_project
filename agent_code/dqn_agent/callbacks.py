@@ -19,12 +19,12 @@ from settings import s, e
 
 training_mode = False if s.gui else True
 load_from_file = False
-analysis_interval = 1000
-save_interval = 200000
-start_learning = 80000
-replay_buffer_size = 300000
-#home = '/home/phaetjay/'
-home = '/home/jakob/'
+analysis_interval = 500
+save_interval = 50000
+start_learning = 0
+replay_buffer_size = 100000
+home = '/home/phaetjay/'
+#home = '/home/jakob/'
 
 
 
@@ -72,18 +72,26 @@ def save_model(agent):
         if not os.path.exists(home + 'models/'):
             os.mkdir(home + 'models/')
         os.mkdir(home + 'models/saved/')
-
-    filename = home + 'models/saved/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
+    modelpath = home + 'models/saved/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
                + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
     T.save({
         'model': agent.model.state_dict(),
         'optimizer': agent.model.optimizer.state_dict(),
-        'explay': agent.explay,
         'analysis': agent.analysis,
         'trainingstep': agent.trainingstep,
         'learninginterval': agent.model.learninginterval,
-    }, filename)
-    print(f'Saved model at step {agent.trainingstep}. Filename: {filename}')
+    }, modelpath)
+    if not os.path.exists(home + 'explay/saved/'):
+        if not os.path.exists(home + 'explay/'):
+            os.mkdir(home + 'explay/')
+        os.mkdir(home + 'explays/saved/')
+    print(f'Saved model at step {agent.trainingstep}. Filename: {modelpath}')
+    explaypath = home + 'explay/saved/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
+               + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
+    T.save({
+        'explay': agent.explay
+    }, explaypath)
+    print(f'Saved experience replay buffer. Filename: {explaypath}')
 
 
 class Analysisbuffer:
@@ -217,10 +225,10 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        rewardtab = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
 
     # Initialize reward, loop through events, and add up rewards
-    reward = -0.05
+    reward = 0
     for event in events:
         reward += rewardtab[event]
     return reward
@@ -287,8 +295,11 @@ def setup(self):
         self.model.learningstep = 1
         self.analysis = []
 
-    self.steploss = T.tensor(100)
-    self.stepq = T.tensor(np.zeros(len(self.possibleact)))
+    self.steploss = T.tensor(0)
+    self.stepq = T.tensor(0)
+    self.laststate = None
+    self.lastaction = None
+    self.lastevents = None
 
     self.model.explay = self.explay
     self.targetmodel.explay = self.explay
@@ -323,12 +334,7 @@ def act(self):
                 print(f'Training step {t}')
 
             if t <= self.startlearning:
-                # Check if this is the first step in episode and initialize variables
-                if t == 1:
-                    self.laststate = None
-                    self.lastaction = None
-                    self.lastevents = None
-                # Choose random action
+                # Choose action with help of role model
                 self.stepaction = select_action(self, rolemodel=rolemodel)
             else:
                 # Choose next action
@@ -434,10 +440,7 @@ def end_of_episode(self):
     :param agent: Agent object.
     '''
     #finalscoretab = [0,0,0,0,0,0,0,0,0,0,0,+1,0,0,0,+5,0]
-    finalscore = self.game_state['self'][4]
-    #for E in [x[4] for x in self.episodeseq]:
-    #   for e in E:
-    #       finalscore += finalscoretab[e]
+    finalscore = 0 #self.game_state['self'][4]
     self.logger.info(f'Final score was: {finalscore}')
 
     for i in range(len(self.episodeseq)):
