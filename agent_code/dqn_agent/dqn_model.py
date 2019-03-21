@@ -89,10 +89,10 @@ class DQN(nn.Module):
         agent.logger.info('DQN model created ...')
         self.agent = agent
         self.updates = 0
-        self.agent.poss_act = self.agent.s.actions
+        self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), minibatch=32, gamma=0.95, lr=0.001,
+    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), minibatch=42, gamma=0.95, lr=0.001,
                       lint=8, tint=1000, sint=50000, aint=False):
 
         ### Hyperparameters ###
@@ -125,7 +125,7 @@ class DQN(nn.Module):
         self.relu2 = nn.ReLU(inplace=True)
         self.fc4 = nn.Linear(32*conv_out(conv_out(insize, ks=2, s=1), ks=3, s=2)**2, 256)
         self.relu4 = nn.ReLU(inplace=True)
-        self.fc5 = nn.Linear(256, len(self.agent.poss_act))
+        self.fc5 = nn.Linear(256, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
         self.agent.logger.debug(self)
 
