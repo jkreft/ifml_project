@@ -1,17 +1,16 @@
 # -*- coding: future_fstrings -*-
-# First line is to enable f-strings in python3.5 installation on vserver
+# First line is to enable f-strings in python3.5 installation on servers
 
 import numpy as np
 import os
 from datetime import datetime
-
 import torch as T
 import torch.nn as nn
-
-from agent_code.simple_agent import callbacks as rolemodel
-
-from agent_code.dqn_agent.dqn_model import DQN, Buffer
 from settings import s, e
+from agent_code.simple_agent import callbacks as rolemodel
+from agent_code.dqn_agent.dqn_model import DQN, Buffer
+from agent_code.dqn_agent.supports import construct_state_tensor, construct_reduced_state_tensor, load_model, \
+    save_model, step_analysis_data, average_analysis_data, analysisbuffer
 
 
 
@@ -20,158 +19,29 @@ resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
 analysis_interval = 2000
-save_interval = 500000
-start_learning = 400000
-replay_buffer_size = 700000
-#home = '/home/phaetjay/'
-#home = '/home/jakob/'
-home = os.path.expanduser("~") + '/'
+save_interval = 100000
+start_learning = 0
+replay_buffer_size = 1000000
+target_interval = 1000
+feature_reduction = False
+
 
 
 
 ########################################################################################################################
-#####                                            Supporting Functions                                              #####
+#####                                              Action Functions                                                #####
 ########################################################################################################################
-
-### Loading and Saving Models and Data ###
-
-def load_model(agent, modelpath=False, explaypath=False):
-    try:
-        if modelpath == False:
-            d = home + 'models/load/model/'
-            # Choose first file in directory d
-            modelpath = d + [x for x in os.listdir(d)][0]
-        data = T.load(modelpath, map_location=agent.device)
-        agent.model.load_state_dict(data['model'])
-        agent.targetmodel.load_state_dict(data['model'])
-        agent.model.optimizer.load_state_dict(data['optimizer'])
-        agent.analysis = data['analysis']
-        agent.modelname = modelpath.split('/')[-1].split('.pth')[0]
-        agent.trainingstep = data['trainingstep']
-        agent.logger.info(f'Model was loaded from file at step {agent.trainingstep}')
-        print(f'Model was loaded from file at step {agent.trainingstep}')
-        if training_mode:
-            if modelpath == False:
-                d = home + 'models/load/explay/'
-                # Choose first file in directory d
-                explaypath = d + [x for x in os.listdir(d)][0]
-            data = T.load(explaypath)
-            agent.explay = data['explay']
-            agent.logger.info('Experience replay buffer was loaded from file.')
-            print('Experience replay buffer was loaded from file.')
-        else:
-            agent.logger.info('Loaded model without Experience replay buffer.')
-            print('Loaded model without Experience replay buffer.')
-
-    except Exception as error:
-        agent.logger.info(f'A file could not be found. Error: {error}\nModel and buffer were not loaded!')
-        print(f'A file could not be found. Error: {error}\nModel and buffer were not loaded!')
-
-
-def save_model(agent):
-    if not os.path.exists(home + 'models/saved/'):
-        if not os.path.exists(home + 'models/'):
-            os.mkdir(home + 'models/')
-        os.mkdir(home + 'models/saved/')
-    modelpath = home + 'models/saved/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
-               + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
-    T.save({
-        'model': agent.model.state_dict(),
-        'optimizer': agent.model.optimizer.state_dict(),
-        'analysis': agent.analysis,
-        'trainingstep': agent.trainingstep,
-        'learninginterval': agent.model.learninginterval,
-    }, modelpath)
-    if not os.path.exists(home + 'explay/saved/'):
-        if not os.path.exists(home + 'explay/'):
-            os.mkdir(home + 'explay/')
-        os.mkdir(home + 'explay/saved/')
-    print(f'Saved model at step {agent.trainingstep}. Filename: {modelpath}')
-    explaypath = home + 'explay/saved/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
-               + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
-    T.save({
-        'explay': agent.explay
-    }, explaypath)
-    print(f'Saved experience replay buffer. Filename: {explaypath}')
-
-
-class Analysisbuffer:
-    def __init__(self):
-        self.action = []
-        self.reward = []
-        self.epsilon = []
-        self.explored = []
-        self.loss = []
-        self.q = []
-
-
-def step_analysis_data(agent):
-    agent.analysisbuffer.action.append(agent.stepaction.cpu().numpy())
-    agent.analysisbuffer.reward.append(agent.stepreward)
-    agent.analysisbuffer.epsilon.append(agent.model.stepsilon)
-    agent.analysisbuffer.explored.append(agent.explored)
-    agent.analysisbuffer.loss.append(agent.plotloss.detach().numpy())
-    agent.analysisbuffer.q.append(agent.stepq.cpu().detach().numpy())
-
-
-def average_analysis_data(agent):
-    buffer = agent.analysisbuffer
-    avgdata = {
-        'learningstep': agent.model.learningstep,
-        'action': np.array(buffer.action).mean(),
-        'reward': np.array(buffer.reward).mean(),
-        'epsilon': np.array(buffer.epsilon).mean(),
-        'explored': np.array(buffer.explored).mean(),
-        'loss': np.array(buffer.loss).mean(),
-        'q': np.array(buffer.q).mean()
-    }
-    agent.analysis.append(avgdata)
-    agent.analysisbuffer = Analysisbuffer()
 
 
 ### Deciding on Actions ###
 
-def construct_state_tensor(agent):
+def construct_state(agent):
     '''
-    Create image-like (pixel-based) state tensor from game_state data.
+    Create state tensor from game_state data.
     :param agent: Agent object.
     :return: State tensor (on cuda if available).
     '''
-    state = T.zeros(agent.stateshape)
-    # Represent the arena (walls, ...)
-    state[0] = T.from_numpy(agent.game_state['arena'])
-    # The agent's own position
-    state[1, agent.game_state['self'][0], agent.game_state['self'][1]] = 1
-    # Positions of coins
-    for coin in agent.game_state['coins']:
-        state[2, coin[0], coin[1]] = 1
-    # Other players' positions
-    #for other in agent.game_state['others']:
-    #    state[2, other[0], other[1]] = 1
-    # Bomb position and countdown-timers
-    #for bomb in agent.game_state['bombs']:
-    #    state[3, bomb[0], bomb[1]] = bomb[2]
-    # Positions of explosions
-    #state[4] = T.from_numpy(agent.game_state['explosions'])
-    if T.cuda.is_available():
-        state = state.cuda()
-    return state
-
-def construct_reduced_state_tensor(agent):
-    '''
-    Create reduced state tensor from game_state data.
-    :param agent: Agent object.
-    :return: State tensor (on cuda if available).
-    '''
-    state = T.zeros(agent.reducedstateshape)
-
-    #state[0, 0] = 'walls'
-    #sstate[0, 1] = 'coins'
-
-    if T.cuda.is_available():
-        state = state.cuda()
-    return state
-
+    return construct_reduced_state_tensor(agent) if feature_reduction else construct_state_tensor(agent)
 
 
 def select_action(agent, rolemodel=False):
@@ -186,20 +56,22 @@ def select_action(agent, rolemodel=False):
         output = agent.model(input)[0]
         return T.argmax(output)
 
+    def action(agent, string):
+        if string == 'policy':
+            a = policy(agent)
+            agent.logger.debug('Using policy: Chose ' + str(a))
+        if string == 'random':
+            a = T.tensor(np.random.choice(len(agent.possibleact)))
+            agent.logger.debug('Exploring: Chose ' + str(a))
+        if string == 'rolemodel':
+            rolemodel.act(agent)
+            a = T.tensor(agent.possibleact.index(agent.next_action))
+            agent.logger.debug('Using rolemodel: Chose ' + str(a))
+        return a
+
     if agent.training:
-        if agent.model.explore('exp'):
-            agent.explored = 1
-            action = T.tensor(np.random.choice(len(agent.possibleact)))
-            agent.logger.debug('Exploring: Chose ' + str(action))
-        else:
-            agent.explored = 0
-            if rolemodel:
-                rolemodel.act(agent)
-                action = T.tensor(agent.possibleact.index(agent.next_action))
-                agent.logger.debug('Using rolemodel: Chose ' + str(action))
-            else:
-                action = policy(agent)
-                agent.logger.debug('Using policy: Chose ' + str(action))
+        agent.exploration = agent.model.explore()
+        action = action(agent, agent.exploration)
     else:
         action = policy(agent)
     return action.to(agent.device)
@@ -229,10 +101,11 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, 0, 0, -0.1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+        rewardtab = [0, 0, 0, 0, -0.001, 0, -0.1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0] # coins
+        #rewardtab = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # down
 
     # Initialize reward, loop through events, and add up rewards
-    reward = -0.01
+    reward = -0.05
     for event in events:
         reward += rewardtab[event]
     return reward
@@ -258,31 +131,32 @@ def setup(self):
     :param self: Agent object.
     '''
     self.training = training_mode
+    self.homedir = os.path.expanduser("~") + '/'
     modestr = 'TRAINING' if self.training else 'TEST'
     print(f'Running in {modestr} mode')
     self.logger.info(f'Mode: {modestr}')
     self.s, self.e = s, e
-    self.analysisbuffer = Analysisbuffer()
+    self.analysisbuffer = analysisbuffer()
     self.startlearning = start_learning
     self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
     self.cuda = T.cuda.is_available()
     print(f'Cuda is{"" if self.cuda else " not"} available.')
     self.logger.info(f'Cuda is{"" if self.cuda else " not"} available.')
     # Adapt state-tensor to current task (bombs, other players, etc)
-    channels = 3
-    self.stateshape = (channels, s.cols, s.rows)
-    self.reducedstateshape = (2, 3, 3)
+    channels = 2 if feature_reduction else 3
+    self.stateshape = (channels, 3, 3) if feature_reduction else (channels, s.cols, s.rows)
 
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
-    self.model.network_setup(channels=self.stateshape[0], aint=analysis_interval, sint=save_interval, tint=2500, lr=0.0001)
-    self.targetmodel.network_setup(channels=self.stateshape[0])
+    self.model.network_setup(channels=self.stateshape[0], insize=self.stateshape[1],
+                             aint=analysis_interval, sint=save_interval, tint=target_interval, lr=0.0005)
+    self.targetmodel.network_setup(channels=self.stateshape[0], insize=self.stateshape[1])
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
     # Load previous status from file or start training from the beginning
     if load_from_file:
-        load_model(self)
+        load_model(self, trainingmode=training_mode)
     else:
         # Setup new experience replay
         self.explay = Buffer(replay_buffer_size, self.stateshape)
@@ -299,15 +173,16 @@ def setup(self):
         self.model.learningstep = 1
         self.analysis = []
 
+    self.model.explay = self.explay
+    self.targetmodel.explay = self.explay
+    self.episodeseq = []
+
     self.plotloss = T.zeros(1)
     self.stepq = T.zeros((1, self.model.batchsize))
     self.laststate = None
     self.lastaction = None
     self.lastevents = None
-
-    self.model.explay = self.explay
-    self.targetmodel.explay = self.explay
-    self.episodeseq = []
+    self.finalscore = 0
 
     # Setting up simple_agent as "role model" for collecting good training data in the first steps
     rolemodel.setup(self)
@@ -325,7 +200,7 @@ def act(self):
     try:
 
         # Build state tensor
-        self.stepstate = construct_state_tensor(self)
+        self.stepstate = construct_state(self)
 
         if not self.training:
             # Choose next action
@@ -342,7 +217,7 @@ def act(self):
                 self.stepaction = select_action(self, rolemodel=rolemodel)
             else:
                 # Choose next action
-                self.stepaction = select_action(self)
+                self.stepaction = select_action(self, rolemodel=rolemodel)
 
             # Calculate reward for the events leading to this step
             self.stepreward = get_cookies(self)
@@ -429,13 +304,14 @@ def end_of_episode(self):
     When in training mode, called at the end of each episode.
     :param agent: Agent object.
     '''
-    #finalscoretab = [0,0,0,0,0,0,0,0,0,0,0,+1,0,0,0,+5,0]
-    finalscore = self.game_state['self'][4]
-    self.logger.info(f'Final score was: {finalscore}')
+    #finalscore = 0
+    self.finalscore = self.game_state['self'][4]
+    self.logger.info(f'Final score was: {self.finalscore}')
+    #print(f'Final score was: {self.finalscore}')
 
     for i in range(len(self.episodeseq)):
         r = self.episodeseq[i][2]
-        r += finalscore/10
+        r += self.finalscore/5
         self.episodeseq[i][2] = r
 
     self.model.explay.store_batch(self.episodeseq)

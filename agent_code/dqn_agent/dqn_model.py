@@ -1,5 +1,5 @@
 # -*- coding: future_fstrings -*-
-# First line is to enable f-strings in python3.5 installation on vserver
+# First line is to enable f-strings in python3.5 installation on servers
 
 import numpy as np
 import torch as T
@@ -17,7 +17,7 @@ class Buffer():
     Allows to take a random sample of defined maximal size from the buffer for learning.
     '''
 
-    def __init__(self, buffersize, stateshape, device=T.device('cpu')):
+    def __init__(self, buffersize, stateshape):
         self.buffersize = buffersize
         self.pos = 0
         self.fullness = 0
@@ -89,19 +89,27 @@ class DQN(nn.Module):
         agent.logger.info('DQN model created ...')
         self.agent = agent
         self.updates = 0
+        self.stepsilon = 0
+        self.stepsilon2 =0
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), minibatch=32, gamma=0.95, lr=0.001,
+    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.95, 0.001), minibatch=32, gamma=0.95, lr=0.001,
                       lint=8, tint=1000, sint=50000, aint=False):
 
         ### Hyperparameters ###
         totsteps = (self.agent.s.max_steps * self.agent.s.n_rounds) - self.agent.startlearning + 1
+        self.decayfct = 'exp'
         self.eps = (                                                                # Match ε-decay to n_round
             eps[0],                                                                 # Starting value
             eps[1],                                                                 # Terminal value
             (eps[1]-eps[0])/totsteps,                                               # Linear decay slope
             np.log(eps[1]/eps[0])/totsteps)                                         # Exponential decay constant
+        self.eps2 = (                                                               # Match ε-decay to n_round
+            eps2[0],                                                                # Starting value
+            eps2[1],                                                                # Terminal value
+            (eps2[1] - eps2[0]) / totsteps,                                         # Linear decay slope
+            np.log(eps2[1] / eps2[0]) / totsteps)                                   # Exponential decay constant
         self.gamma = gamma                                                          # Discount factor
         self.learningrate = lr                                                      # Learning rate (alpha)
         self.batchsize = minibatch                                                  # Batch size for learning
@@ -118,7 +126,6 @@ class DQN(nn.Module):
 
         def conv_out(insize, ks=2, s=1):
             return (insize - (ks - 1) - 1) // s + 1
-        # conv_out(conv_out(conv_out(insize, ks=2, s=1), ks=2, s=2), ks=2, s=1)
 
         self.conv1 = nn.Conv2d(channels, 32, kernel_size=2, stride=1)
         self.activ1 = nn.functional.leaky_relu
@@ -126,7 +133,7 @@ class DQN(nn.Module):
         self.activ2 = nn.functional.leaky_relu
         self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=1)
         self.activ3 = nn.functional.leaky_relu
-        self.fc4 = nn.Linear(64 * 7 ** 2, 512)
+        self.fc4 = nn.Linear(64*conv_out(conv_out(conv_out(insize, ks=2, s=1), ks=2, s=2), ks=2, s=1)**2, 512)
         self.activ4 = nn.functional.leaky_relu
         self.fc5 = nn.Linear(512, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
@@ -139,11 +146,9 @@ class DQN(nn.Module):
 
         # RMSprop???
 
-
         ### Loss function ###
         #self.loss = nn.functional.smooth_l1_loss
         self.loss = nn.functional.mse_loss
-        self.stepsilon = 0
 
 
     def set_weights(self, random=True, file=False):
@@ -176,24 +181,37 @@ class DQN(nn.Module):
         return output
 
 
-    def explore(self, fct):
+    def explore(self):
         '''
         Implementation of an ε-greedy policy.
         Choose whether to explore or exploit in this step.
         :param decay: Type of decay for the ε-threshold {'lin', 'exp'}
         :return: True if decided to explore.
         '''
-        if self.agent.trainingstep <= self.agent.startlearning:
-            self.stepsilon = 0.1
+        t = self.agent.trainingstep - self.agent.startlearning + 1
+        if self.agent.trainingstep < self.agent.startlearning:
+            self.stepsilon = 0.5
+            if np.random.random() < self.stepsilon:
+                choice = 'random'
+            else:
+                choice = 'policy'
         else:
             start, end, slope, exponent = self.eps
-            if fct == 'exp':
-                thresh = end + (start - end) * np.exp(exponent * self.agent.trainingstep)
-            elif fct == 'lin':
-                thresh = start + slope * self.agent.trainingstep
+            start2, end2, slope2, exponent2 = self.eps2
+            if self.decayfct == 'exp':
+                self.stepsilon = end + (start - end) * np.exp(exponent * t)
+                self.stepsilon2 = end2 + (start2 - end2) * np.exp(exponent2 * t)
             else:
-                print(f'Decay function: {fct} not known! Choosing linear decay instead.')
-                thresh = start + slope * self.agent.trainingstep
-            self.stepsilon = thresh
+                if not self.decayfct == 'lin':
+                    print(f'Decay function: {self.decayfct} not known! Choosing linear decay instead.')
+                self.stepsilon = start + slope * t
+                self.stepsilon2 = start2 + slope2 * t
 
-        return True if np.random.random() < self.stepsilon else False
+            if np.random.random() > self.stepsilon:
+                choice = 'policy'
+            else:
+                if np.random.random() > self.stepsilon2:
+                    choice = 'random'
+                else:
+                    choice = 'rolemodel'
+        return choice
