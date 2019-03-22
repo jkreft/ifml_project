@@ -118,24 +118,30 @@ class DQN(nn.Module):
 
         def conv_out(insize, ks=2, s=1):
             return (insize - (ks - 1) - 1) // s + 1
+        # conv_out(conv_out(conv_out(insize, ks=2, s=1), ks=2, s=2), ks=2, s=1)
 
-        self.conv1 = nn.Conv2d(channels, 16, kernel_size=3, stride=2)
-        self.relu1 = nn.ReLU(inplace=True)
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=2, stride=1)
-        self.relu2 = nn.ReLU(inplace=True)
-        self.fc4 = nn.Linear(32*conv_out(conv_out(insize, ks=2, s=1), ks=3, s=2)**2, 256)
-        self.relu4 = nn.ReLU(inplace=True)
-        self.fc5 = nn.Linear(256, len(self.agent.possibleact))
+        self.conv1 = nn.Conv2d(channels, 32, kernel_size=2, stride=1)
+        self.activ1 = nn.functional.leaky_relu
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
+        self.activ2 = nn.functional.leaky_relu
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=1)
+        self.activ3 = nn.functional.leaky_relu
+        self.fc4 = nn.Linear(64 * 7 ** 2, 512)
+        self.activ4 = nn.functional.leaky_relu
+        self.fc5 = nn.Linear(512, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
         self.agent.logger.debug(self)
 
         ### Optimizer ###
 
         self.learningrate = lr
-        self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate)
+        self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate, weight_decay=0.0001)
+
+        # RMSprop???
 
 
         ### Loss function ###
+        #self.loss = nn.functional.smooth_l1_loss
         self.loss = nn.functional.mse_loss
         self.stepsilon = 0
 
@@ -144,7 +150,7 @@ class DQN(nn.Module):
 
         def random_weights(model):
             if type(model) == nn.Conv2d or type(model) == nn.Linear:
-                nn.init.uniform_(model.weight, -0.01, 0.01)
+                nn.init.kaiming_uniform_(model.weight, nonlinearity='leaky_relu')
                 model.bias.data.fill_(0.01)
         if random:
             # Set initial weights randomly
@@ -162,9 +168,10 @@ class DQN(nn.Module):
         :param input: Input tensor.
         :return: Output tensor (q-value for all possible actions).
         '''
-        interm = self.relu1(self.conv1(input))
-        interm = self.relu2(self.conv2(interm))
-        interm = self.relu4(self.fc4(interm.view(interm.size(0), -1)))
+        interm = self.activ1(self.conv1(input))
+        interm = self.activ2(self.conv2(interm))
+        interm = self.activ3(self.conv3(interm))
+        interm = self.activ4(self.fc4(interm.view(interm.size(0), -1)))
         output = self.fc5(interm)
         return output
 

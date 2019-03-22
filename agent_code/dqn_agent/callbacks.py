@@ -19,10 +19,10 @@ from settings import s, e
 resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
-analysis_interval = 100
-save_interval = 200000
-start_learning = 199399
-replay_buffer_size = 400000
+analysis_interval = 2000
+save_interval = 500000
+start_learning = 400000
+replay_buffer_size = 700000
 #home = '/home/phaetjay/'
 #home = '/home/jakob/'
 home = os.path.expanduser("~") + '/'
@@ -110,7 +110,7 @@ def step_analysis_data(agent):
     agent.analysisbuffer.reward.append(agent.stepreward)
     agent.analysisbuffer.epsilon.append(agent.model.stepsilon)
     agent.analysisbuffer.explored.append(agent.explored)
-    agent.analysisbuffer.loss.append(agent.steploss.detach().numpy())
+    agent.analysisbuffer.loss.append(agent.plotloss.detach().numpy())
     agent.analysisbuffer.q.append(agent.stepq.cpu().detach().numpy())
 
 
@@ -165,6 +165,8 @@ def construct_reduced_state_tensor(agent):
     '''
     state = T.zeros(agent.reducedstateshape)
 
+    #state[0, 0] = 'walls'
+    #sstate[0, 1] = 'coins'
 
     if T.cuda.is_available():
         state = state.cuda()
@@ -269,7 +271,7 @@ def setup(self):
     # Adapt state-tensor to current task (bombs, other players, etc)
     channels = 3
     self.stateshape = (channels, s.cols, s.rows)
-    self.reducedstateshape = ()
+    self.reducedstateshape = (2, 3, 3)
 
     # Create and setup model and target DQNs
     self.model = DQN(self)
@@ -297,7 +299,7 @@ def setup(self):
         self.model.learningstep = 1
         self.analysis = []
 
-    self.steploss = T.tensor(0)
+    self.plotloss = T.zeros(1)
     self.stepq = T.zeros((1, self.model.batchsize))
     self.laststate = None
     self.lastaction = None
@@ -384,24 +386,10 @@ def act(self):
                 # Expected q-values for current state
                 expectedq = ( (nextq * self.model.gamma) + batch.reward ).to(self.device)
                 self.steploss = self.model.loss(self.stepq, expectedq)
-                self.steploss = self.steploss.cpu()
+                self.plotloss = self.steploss.cpu()
                 batch.state = batch.state.cpu()
                 batch.action = batch.action.cpu()
 
-                #print('marker3')
-                '''
-                q = self.model(batch.state)  # Get q-values from state using the model
-                q = q.gather(1, batch.action)  # Put together with actions
-                nextq = T.zeros((len(batch.nextstate), len(self.possibleact)))
-                nfnextq = self.targetmodel(nfnext)
-                
-                # Make nextq so that it only contains the output for which the input states were non-final
-                nextq.index_copy_(0, nf, nfnextq)
-                nextq = nextq.max(1)[0]
-                # Expected q-values for current state
-                expectedq = (nextq * self.model.gamma) + batch.reward
-                self.steploss = self.model.loss(q, expectedq)
-                '''
                 self.logger.info('The loss in this learning step was ' + str(self.steploss))
                 self.model.optimizer.zero_grad()
                 self.steploss.backward()
