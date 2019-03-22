@@ -1,5 +1,5 @@
 # -*- coding: future_fstrings -*-
-# First line is to enable f-strings in python3.5 installation on vserver
+# First line is to enable f-strings in python3.5 installation on servers
 
 from collections import namedtuple
 import pygame
@@ -17,7 +17,7 @@ settings = {
     # Main loop
     'update_interval': 0.05,
     'turn_based': False,
-    'n_rounds': 250,
+    'n_rounds': 500,
     'save_replay': False,
     'make_video_from_replay': False,
 

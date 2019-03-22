@@ -94,8 +94,8 @@ class DQN(nn.Module):
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.95, 0.001), minibatch=32, gamma=0.95, lr=0.001,
-                      lint=8, tint=1000, sint=50000, aint=False):
+    def network_setup(self, insize=3, channels=2, eps=(0.95, 0.05), eps2=(0.95, 0.001), minibatch=32, gamma=0.95,
+                      lr=0.001, lint=8, tint=1000, sint=50000, aint=False):
 
         ### Hyperparameters ###
         totsteps = (self.agent.s.max_steps * self.agent.s.n_rounds) - self.agent.startlearning + 1
@@ -127,13 +127,13 @@ class DQN(nn.Module):
         def conv_out(insize, ks=2, s=1):
             return (insize - (ks - 1) - 1) // s + 1
 
-        self.conv1 = nn.Conv2d(channels, 32, kernel_size=2, stride=1)
+        self.layer1 = nn.Conv2d(channels, 32, kernel_size=1, stride=1)
         self.activ1 = nn.functional.leaky_relu
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
+        self.layer2 = nn.Linear(32*conv_out(insize, ks=1, s=1)**2, 512)
         self.activ2 = nn.functional.leaky_relu
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=1)
+        self.layer3 = nn.Linear(512, 1024)
         self.activ3 = nn.functional.leaky_relu
-        self.fc4 = nn.Linear(64*conv_out(conv_out(conv_out(insize, ks=2, s=1), ks=2, s=2), ks=2, s=1)**2, 512)
+        self.layer4 = nn.Linear(1024, 512)
         self.activ4 = nn.functional.leaky_relu
         self.fc5 = nn.Linear(512, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
@@ -173,10 +173,10 @@ class DQN(nn.Module):
         :param input: Input tensor.
         :return: Output tensor (q-value for all possible actions).
         '''
-        interm = self.activ1(self.conv1(input))
-        interm = self.activ2(self.conv2(interm))
-        interm = self.activ3(self.conv3(interm))
-        interm = self.activ4(self.fc4(interm.view(interm.size(0), -1)))
+        interm = self.activ1(self.layer1(input))
+        interm = self.activ2(self.layer2(interm))
+        interm = self.activ3(self.layer3(interm))
+        interm = self.activ4(self.layer4(interm.view(interm.size(0), -1)))
         output = self.fc5(interm)
         return output
 
