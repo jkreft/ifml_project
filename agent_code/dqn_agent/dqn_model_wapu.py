@@ -89,27 +89,19 @@ class DQN(nn.Module):
         agent.logger.info('DQN model created ...')
         self.agent = agent
         self.updates = 0
-        self.stepsilon = 0
-        self.stepsilon2 =0
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.9, 0.001), minibatch=32, gamma=0.95, lr=0.001,
+    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), minibatch=32, gamma=0.95, lr=0.001,
                       lint=8, tint=1000, sint=50000, aint=False):
 
         ### Hyperparameters ###
         totsteps = (self.agent.s.max_steps * self.agent.s.n_rounds) - self.agent.startlearning + 1
-        self.decayfct = 'lin'
         self.eps = (                                                                # Match ε-decay to n_round
             eps[0],                                                                 # Starting value
             eps[1],                                                                 # Terminal value
             (eps[1]-eps[0])/totsteps,                                               # Linear decay slope
             np.log(eps[1]/eps[0])/totsteps)                                         # Exponential decay constant
-        self.eps2 = (                                                               # Match ε-decay to n_round
-            eps2[0],                                                                # Starting value
-            eps2[1],                                                                # Terminal value
-            (eps2[1] - eps2[0]) / totsteps,                                         # Linear decay slope
-            np.log(eps2[1] / eps2[0]) / totsteps)                                   # Exponential decay constant
         self.gamma = gamma                                                          # Discount factor
         self.learningrate = lr                                                      # Learning rate (alpha)
         self.batchsize = minibatch                                                  # Batch size for learning
@@ -129,34 +121,45 @@ class DQN(nn.Module):
         # conv_out(conv_out(conv_out(insize, ks=2, s=1), ks=2, s=2), ks=2, s=1)
 
         self.conv1 = nn.Conv2d(channels, 32, kernel_size=2, stride=1)
-        self.activ1 = nn.functional.leaky_relu
+        self.relu1 = nn.functional.relu
         self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
-        self.activ2 = nn.functional.leaky_relu
+        self.relu2 = nn.functional.relu
         self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=1)
-        self.activ3 = nn.functional.leaky_relu
-        self.fc4 = nn.Linear(64 * 7 ** 2, 512)
-        self.activ4 = nn.functional.leaky_relu
+        self.relu3 = nn.functional.relu
+        self.fc4 = nn.Linear(64*7**2, 512)
+        self.relu4 = nn.functional.relu
         self.fc5 = nn.Linear(512, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
         self.agent.logger.debug(self)
 
+        '''
+        Small Net:
+        self.conv1 = nn.Conv2d(channels, 32, kernel_size=3, stride=2)
+        self.activ1 = nn.LeakyReLU(inplace=True)
+        self.conv2 = nn.Conv2d(32, 32, kernel_size=2, stride=1)
+        self.activ2 = nn.LeakyReLU(inplace=True)
+        self.fc4 = nn.Linear(32*conv_out(conv_out(insize, ks=2, s=1), ks=3, s=2)**2, 256)
+        self.activ4 = nn.LeakyReLU(inplace=True)
+        self.fc5 = nn.Linear(256, len(self.agent.possibleact))
+        '''
+
         ### Optimizer ###
 
         self.learningrate = lr
-        self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate, weight_decay=0.0001)
+        self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate)
 
-        # RMSprop???
 
         ### Loss function ###
-        #self.loss = nn.functional.smooth_l1_loss
-        self.loss = nn.functional.mse_loss
+        #self.loss = nn.functional.mse_loss
+        self.loss = nn.functional.smooth_l1_loss
+        self.stepsilon = 0
 
 
     def set_weights(self, random=True, file=False):
 
         def random_weights(model):
             if type(model) == nn.Conv2d or type(model) == nn.Linear:
-                nn.init.kaiming_uniform_(model.weight, nonlinearity='leaky_relu')
+                nn.init.uniform_(model.weight, -0.01, 0.01)
                 model.bias.data.fill_(0.01)
         if random:
             # Set initial weights randomly
@@ -174,41 +177,31 @@ class DQN(nn.Module):
         :param input: Input tensor.
         :return: Output tensor (q-value for all possible actions).
         '''
-        interm = self.activ1(self.conv1(input))
-        interm = self.activ2(self.conv2(interm))
-        interm = self.activ3(self.conv3(interm))
-        interm = self.activ4(self.fc4(interm.view(interm.size(0), -1)))
+        interm = self.relu1(self.conv1(input))
+        interm = self.relu2(self.conv2(interm))
+        interm = self.relu4(self.fc4(interm.view(interm.size(0), -1)))
         output = self.fc5(interm)
         return output
 
 
-    def explore(self):
+    def explore(self, fct):
         '''
         Implementation of an ε-greedy policy.
         Choose whether to explore or exploit in this step.
         :param decay: Type of decay for the ε-threshold {'lin', 'exp'}
         :return: True if decided to explore.
         '''
-        t = self.agent.trainingstep - self.agent.startlearning + 1
         if self.agent.trainingstep <= self.agent.startlearning:
-            self.stepsilon = 0.5
+            self.stepsilon = 0.1
         else:
             start, end, slope, exponent = self.eps
-            start2, end2, slope2, exponent2 = self.eps2
-            if self.decayfct == 'exp':
-                self.stepsilon = end + (start - end) * np.exp(exponent * t)
-                self.stepsilon2 = end2 + (start2 - end2) * np.exp(exponent2 * t)
+            if fct == 'exp':
+                thresh = end + (start - end) * np.exp(exponent * self.agent.trainingstep)
+            elif fct == 'lin':
+                thresh = start + slope * self.agent.trainingstep
             else:
-                if not self.decayfct == 'lin':
-                    print(f'Decay function: {fct} not known! Choosing linear decay instead.')
-                self.stepsilon = start + slope * t
-                self.stepsilon2 = start2 + slope2 * t
+                print(f'Decay function: {fct} not known! Choosing linear decay instead.')
+                thresh = start + slope * self.agent.trainingstep
+            self.stepsilon = thresh
 
-        if np.random.random() > self.stepsilon:
-            choice = 'policy'
-        else:
-            if np.random.random() > self.stepsilon2:
-                choice = 'random'
-            else:
-                choice = 'rolemodel'
-        return choice
+        return True if np.random.random() < self.stepsilon else False

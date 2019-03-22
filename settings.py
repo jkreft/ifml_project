@@ -15,9 +15,9 @@ settings = {
     'fps': 15,
 
     # Main loop
-    'update_interval': 0,
+    'update_interval': 0.05,
     'turn_based': False,
-    'n_rounds': 5000,
+    'n_rounds': 250,
     'save_replay': False,
     'make_video_from_replay': False,
 

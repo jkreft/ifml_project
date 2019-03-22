@@ -16,12 +16,15 @@ from settings import s, e
 
 
 ### Flags for choosing in which settings to run ###
-
-training_mode = True
-load_from_file = False
-analysis_interval = 1000
-save_interval = 400000
-start_learning = 100000
+resume_training = False
+training_mode = False if s.gui else True
+load_from_file = resume_training if training_mode else True
+analysis_interval = 500
+save_interval = 50000
+start_learning = 20000
+replay_buffer_size = 50000
+target_interval = 500
+home = os.path.expanduser("~") + '/'
 
 
 
@@ -31,41 +34,64 @@ start_learning = 100000
 
 ### Loading and Saving Models and Data ###
 
-def load_model(agent, filepath=False):
+def load_model(agent, modelpath=False, explaypath=False):
     try:
-        if filepath == False:
-            d = './models/load/'
+        if modelpath == False:
+            d = home + 'models/load/model/'
             # Choose first file in directory d
-            filepath = d + [x for x in os.listdir(d) if os.path.isfile(d + x)][0]
-        data = T.load(filepath, map_location=agent.device)
+            modelpath = d + [x for x in os.listdir(d)][0]
+        data = T.load(modelpath, map_location=agent.device)
         agent.model.load_state_dict(data['model'])
         agent.targetmodel.load_state_dict(data['model'])
         agent.model.optimizer.load_state_dict(data['optimizer'])
         agent.analysis = data['analysis']
-        agent.modelname = filepath.split('/')[-1].split('.pth')[0]
-        agent.explay = data['explay']
+        agent.modelname = modelpath.split('/')[-1].split('.pth')[0]
         agent.trainingstep = data['trainingstep']
         agent.logger.info(f'Model was loaded from file at step {agent.trainingstep}')
         print(f'Model was loaded from file at step {agent.trainingstep}')
+        if training_mode:
+            if modelpath == False:
+                d = home + 'models/load/explay/'
+                # Choose first file in directory d
+                explaypath = d + [x for x in os.listdir(d)][0]
+            data = T.load(explaypath)
+            agent.explay = data['explay']
+            agent.logger.info('Experience replay buffer was loaded from file.')
+            print('Experience replay buffer was loaded from file.')
+        else:
+            agent.logger.info('Loaded model without Experience replay buffer.')
+            print('Loaded model without Experience replay buffer.')
+
     except Exception as error:
-        agent.logger.info(f'No file could be found. Error: {error}\nModel was not loaded!')
-        print(f'No file could be found. Error: {error}\nModel was not loaded!')
+        agent.logger.info(f'A file could not be found. Error: {error}\nModel and buffer were not loaded!')
+        print(f'A file could not be found. Error: {error}\nModel and buffer were not loaded!')
 
 
 def save_model(agent):
-    if not os.path.exists('./models'):
-        os.mkdir('./models')
-    filename = './models/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
+    if not os.path.exists(home + 'models/saved/'):
+        if not os.path.exists(home + 'models/'):
+            os.mkdir(home + 'models/')
+        os.mkdir(home + 'models/saved/')
+    modelpath = home + 'models/saved/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
                + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
     T.save({
         'model': agent.model.state_dict(),
         'optimizer': agent.model.optimizer.state_dict(),
-        'explay': agent.explay,
         'analysis': agent.analysis,
         'trainingstep': agent.trainingstep,
         'learninginterval': agent.model.learninginterval,
-    }, filename)
-    print(f'Saved model at step {agent.trainingstep}. Filename: {filename}')
+    }, modelpath)
+    if not os.path.exists(home + 'explay/saved/'):
+        if not os.path.exists(home + 'explay/'):
+            os.mkdir(home + 'explay/')
+        os.mkdir(home + 'explay/saved/')
+    print(f'Saved model at step {agent.trainingstep}. Filename: {modelpath}')
+    explaypath = home + 'explay/saved/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
+               + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
+    T.save({
+        'explay': agent.explay
+    }, explaypath)
+    print(f'Saved experience replay buffer. Filename: {explaypath}')
 
 
 class Analysisbuffer:
@@ -73,7 +99,7 @@ class Analysisbuffer:
         self.action = []
         self.reward = []
         self.epsilon = []
-        self.explored = []
+        self.expl = []
         self.loss = []
         self.q = []
 
@@ -82,20 +108,21 @@ def step_analysis_data(agent):
     agent.analysisbuffer.action.append(agent.stepaction.cpu().numpy())
     agent.analysisbuffer.reward.append(agent.stepreward)
     agent.analysisbuffer.epsilon.append(agent.model.stepsilon)
-    agent.analysisbuffer.explored.append(agent.explored)
-    agent.analysisbuffer.loss.append(agent.steploss.detach().numpy())
+    agent.analysisbuffer.expl.append(agent.exploration)
+    agent.analysisbuffer.loss.append(agent.plotloss.detach().numpy())
     agent.analysisbuffer.q.append(agent.stepq.cpu().detach().numpy())
 
+
 def average_analysis_data(agent):
-    buffer = agent.analysisbuffer
+    b = agent.analysisbuffer
     avgdata = {
         'learningstep': agent.model.learningstep,
-        'action': np.array(buffer.action).mean(),
-        'reward': np.array(buffer.reward).mean(),
-        'epsilon': np.array(buffer.epsilon).mean(),
-        'explored': np.array(buffer.explored).mean(),
-        'loss': np.array(buffer.loss).mean(),
-        'q': np.array(buffer.q).mean()
+        'action': np.array(b.action).mean(),
+        'reward': np.array(b.reward).mean(),
+        'epsilon': np.array(b.epsilon).mean(),
+        'exploration': np.array([b.expl.count('policy'), b.expl.count('random'), b.expl.count('policy')]),
+        'loss': np.array(b.loss).mean(),
+        'q': np.array(b.q).mean()
     }
     agent.analysis.append(avgdata)
     agent.analysisbuffer = Analysisbuffer()
@@ -137,6 +164,8 @@ def construct_reduced_state_tensor(agent):
     '''
     state = T.zeros(agent.reducedstateshape)
 
+    #state[0, 0] = 'walls'
+    #sstate[0, 1] = 'coins'
 
     if T.cuda.is_available():
         state = state.cuda()
@@ -156,20 +185,22 @@ def select_action(agent, rolemodel=False):
         output = agent.model(input)[0]
         return T.argmax(output)
 
+    def action(agent, string):
+        if string == 'policy':
+            a = policy(agent)
+            agent.logger.debug('Using policy: Chose ' + str(a))
+        if string == 'random':
+            a = T.tensor(np.random.choice(len(agent.possibleact)))
+            agent.logger.debug('Exploring: Chose ' + str(a))
+        if string == 'rolemodel':
+            rolemodel.act(agent)
+            a = T.tensor(agent.possibleact.index(agent.next_action))
+            agent.logger.debug('Using rolemodel: Chose ' + str(a))
+        return a
+
     if agent.training:
-        if agent.model.explore('exp'):
-            agent.explored = 1
-            action = T.tensor(np.random.choice(len(agent.possibleact)))
-            agent.logger.debug('Exploring: Chose ' + str(action))
-        else:
-            agent.explored = 0
-            if rolemodel:
-                rolemodel.act(agent)
-                action = T.tensor(agent.possibleact.index(agent.next_action))
-                agent.logger.debug('Using rolemodel: Chose ' + str(action))
-            else:
-                action = policy(agent)
-                agent.logger.debug('Using policy: Chose ' + str(action))
+        agent.exploration = agent.model.explore()
+        action = action(agent, agent.exploration)
     else:
         action = policy(agent)
     return action.to(agent.device)
@@ -199,10 +230,11 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, +1, 0, 0, 0, 0, 0]
+        rewardtab = [0, 0, 0, 0, -0.001, 0, -0.1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0] # coins
+        #rewardtab = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # down
 
     # Initialize reward, loop through events, and add up rewards
-    reward = -0.01
+    reward = -0.05
     for event in events:
         reward += rewardtab[event]
     return reward
@@ -241,12 +273,12 @@ def setup(self):
     # Adapt state-tensor to current task (bombs, other players, etc)
     channels = 3
     self.stateshape = (channels, s.cols, s.rows)
-    self.reducedstateshape = ()
+    self.reducedstateshape = (2, 3, 3)
 
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
-    self.model.network_setup(channels=self.stateshape[0], aint=analysis_interval, sint=save_interval, tint=2000)
+    self.model.network_setup(channels=self.stateshape[0], aint=analysis_interval, sint=save_interval, tint=target_interval, lr=0.0001)
     self.targetmodel.network_setup(channels=self.stateshape[0])
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
@@ -255,7 +287,7 @@ def setup(self):
         load_model(self)
     else:
         # Setup new experience replay
-        self.explay = Buffer(500000, self.stateshape)
+        self.explay = Buffer(replay_buffer_size, self.stateshape)
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
         self.logger.info('Modelname:' + self.modelname)
@@ -269,8 +301,11 @@ def setup(self):
         self.model.learningstep = 1
         self.analysis = []
 
-    self.steploss = T.tensor(100)
-    self.stepq = T.tensor(np.zeros(len(self.possibleact)))
+    self.plotloss = T.zeros(1)
+    self.stepq = T.zeros((1, self.model.batchsize))
+    self.laststate = None
+    self.lastaction = None
+    self.lastevents = None
 
     self.model.explay = self.explay
     self.targetmodel.explay = self.explay
@@ -305,16 +340,11 @@ def act(self):
                 print(f'Training step {t}')
 
             if t <= self.startlearning:
-                # Check if this is the first step in episode and initialize variables
-                if t == 1:
-                    self.laststate = None
-                    self.lastaction = None
-                    self.lastevents = None
-                # Choose random action
+                # Choose action with help of role model
                 self.stepaction = select_action(self, rolemodel=rolemodel)
             else:
                 # Choose next action
-                self.stepaction = select_action(self)
+                self.stepaction = select_action(self, rolemodel=rolemodel)
 
             # Calculate reward for the events leading to this step
             self.stepreward = get_cookies(self)
@@ -358,24 +388,10 @@ def act(self):
                 # Expected q-values for current state
                 expectedq = ( (nextq * self.model.gamma) + batch.reward ).to(self.device)
                 self.steploss = self.model.loss(self.stepq, expectedq)
-                self.steploss = self.steploss.cpu()
+                self.plotloss = self.steploss.cpu()
                 batch.state = batch.state.cpu()
                 batch.action = batch.action.cpu()
 
-                #print('marker3')
-                '''
-                q = self.model(batch.state)  # Get q-values from state using the model
-                q = q.gather(1, batch.action)  # Put together with actions
-                nextq = T.zeros((len(batch.nextstate), len(self.possibleact)))
-                nfnextq = self.targetmodel(nfnext)
-                
-                # Make nextq so that it only contains the output for which the input states were non-final
-                nextq.index_copy_(0, nf, nfnextq)
-                nextq = nextq.max(1)[0]
-                # Expected q-values for current state
-                expectedq = (nextq * self.model.gamma) + batch.reward
-                self.steploss = self.model.loss(q, expectedq)
-                '''
                 self.logger.info('The loss in this learning step was ' + str(self.steploss))
                 self.model.optimizer.zero_grad()
                 self.steploss.backward()
@@ -415,16 +431,14 @@ def end_of_episode(self):
     When in training mode, called at the end of each episode.
     :param agent: Agent object.
     '''
-    finalscoretab = [0,0,0,0,0,0,0,0,0,0,0,+1,0,0,0,+5,0]
-    finalscore = 0
-    for E in [x[4] for x in self.episodeseq]:
-        for e in E:
-            finalscore += finalscoretab[e]
-    self.logger.debug(f'Final score was: {finalscore}')
+    #finalscore = 0
+    finalscore = self.game_state['self'][4]
+    self.logger.info(f'Final score was: {finalscore}')
+    print(f'Final score was: {finalscore}')
 
     for i in range(len(self.episodeseq)):
         r = self.episodeseq[i][2]
-        r += finalscore/10
+        r += finalscore/5
         self.episodeseq[i][2] = r
 
     self.model.explay.store_batch(self.episodeseq)
