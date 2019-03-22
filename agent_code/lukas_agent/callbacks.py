@@ -33,7 +33,7 @@ ACTION_SPACE = np.array(['UP', 'DOWN', 'LEFT', 'RIGHT', 'WAIT'])
 
 # Parameters to controll model
 # param = {}
-STATE_VERSION = 2
+STATE_VERSION = 5
 #           max tree leaves | max tree depth | self implemented | #boosted trees to fit | #samples for constr. bin | 
 gbm_args = {'num_leaves':31, 'max_depth':-1, 'learning_rate':0.1, 'n_estimators':100,     'subsample_for_bin':20000,
              'class_weight':None}
@@ -211,6 +211,81 @@ def get_current_state(self, state_version = STATE_VERSION):
         
         state = np.array([x,y])
         return np.atleast_2d(state)
+    
+    if state_version == 5:
+        ''' 
+        Create reduced state tensor from game_state data.
+        :param self: Agent object.
+        :return: State tensor (on cuda if available).
+        '''
+        #state = T.zeros(self.reducedstateshape)
+        
+        state = np.zeros((2,3,3))
+        
+        x,y,name, bombs_left, score = self.game_state['self']
+        
+        
+        radius = 1
+        range = np.arange(s.rows)
+        mask_x = np.logical_and(range >= x-radius, range <= x+radius)
+        mask_y = np.logical_and(range >= y-radius, range <= y+radius)
+    
+        #arena = self.game_state['arena'][mask_y, :][:,mask_x]
+        state[0] = self.game_state['arena'][mask_y, :][:,mask_x]
+        
+        coins = self.game_state['coins']
+        
+        def eucl_distance(dx, dy):
+            return np.sqrt(dx**2 + dy**2)
+        
+        # maybe this works better with arcsin or another convention
+        def get_sector(x, y, targets, size = 8): # size = 16 for 5x5 state
+            dx = np.atleast_2d(targets)[:,0] - x 
+            dy = y - np.atleast_2d(targets)[:,1]
+            dist = eucl_distance(dx,dy) 
+            #print("sign:", np.sign(dy))
+            offset = np.where( np.logical_or(np.sign(dy) < 0, np.logical_and(np.sign(dy) == 0, np.sign(dx) < 0)) , 0, 2*np.pi)
+            sign = np.where( np.logical_or(np.sign(dy) < 0, np.logical_and(np.sign(dy) == 0, np.sign(dx) < 0)) , 1, -1)
+            #print("offset:", offset)
+            #print("distances:", dx, dist)
+            #print('Muenzen', coins)
+            #print("angles:", (sign * np.arccos(dx/dist) + offset ) * (360 /(2*np.pi))) 
+            sectors = size * ((sign * np.arccos(dx/dist) + offset) / (2*np.pi)) - (1/2)
+            sectors = np.where(sectors < 0, sectors + 8, sectors)
+            return np.array(sectors, dtype=np.int32), dist
+        
+        def distance_to_value(dist):
+            ''' norm distance to the maximal distance on the board and invert the values
+            '''
+            #value = 1 - dist/np.sqrt(s.rows**2 + s.cols**2)
+            #print("value", value) 
+            return 1 - dist/np.sqrt(s.rows**2 + s.cols**2)
+        
+        def sector_to_state(sectors, values, size=8):
+            ''' map the values according to their sectors (ring with #size segments) onto a state with size+1 entries
+            '''
+            #indice>sector mapping = [[4,5,6], [3,8,7], [2,1,0]]
+            indices = [8,7,6,3,0,1,2,5,4]
+            state = np.zeros(size+1)
+            #print("sectors an stelle 0:", sectors[0])
+            try:
+                for i in np.arange(sectors.shape[0]):
+                    state[indices[sectors[i]]] += values[i]
+                return state.reshape(3,3)
+            except:
+                print("######################")
+                print("sector shape:", sectors.shape, "values shape:", values.shape)
+        
+    
+    sectors, dist = get_sector(x, y, coins)
+    #print("sectors:", sectors)
+    state[1] = sector_to_state(sectors, distance_to_value(dist))
+    
+    #print("state 0:", state[0])
+    #print("state 1:", state[1])
+
+    return np.atleast_2d(state.flatten())
+
 
 def select_action(self, state, isFit):
     action_index = 4  # default value 'Wait'
@@ -264,13 +339,16 @@ def reward_update(self):
     if self.isFit:
         q_values = self.model.predict(self.state)
     else:
-        q_values = np.zeros(len(self.action_space))
+        q_values = np.atleast_2d(np.zeros(len(self.action_space)))
     
-    q_values = get_q_update(q_values, action, reward, next_state)
+    reward = compute_reward(self)
+    action = self.next_action
+    next_state = get_current_state(self)
+    
+    #q_values = get_q_update(self, q_values, action, reward, next_state, terminal)
     
     #               last state | choosen action  | reward of next state | next state             | is state terminal
-    self.buffer.store([self.state,  self.next_action, compute_reward(self),  get_current_state(self), q_values, terminal])
-    
+    self.buffer.store([self.state,  action, reward,  next_state, q_values, terminal])
     # TODO: how to save the q-values?
     # Online update rule for 1-step TD-value estimation:
     #if self.isFit == True:
@@ -284,38 +362,38 @@ def reward_update(self):
     
     #self.rewards = np.vstack((self.rewards, reward))  
 
-# def compute_reward(self): 
-#     reward = -1
-#     for event in self.events:
-#         if event == e.BOMB_DROPPED:
-#             reward += 0
-#         elif event == e.COIN_COLLECTED:
-#             reward += 100
-#         elif event == e.CRATE_DESTROYED:
-#             reward += 10 # 30
-#         elif event == e.KILLED_SELF:
-#             reward += 0
-#         elif event == e.KILLED_OPPONENT:
-#             reward += 100
-#         elif event == e.GOT_KILLED:
-#             reward += -300
-#         elif event == e.WAITED:
-#             reward += -5
-#         elif event == e.INVALID_ACTION:
-#             reward += -10
-#         elif event == e.SURVIVED_ROUND:
-#             reward += 0
-#     #if PRINTING: print("events:", self.events, "current reward:", reward)
-#     return reward ######### * GAMMA**self.game_state['step'] # Discounted Reward
-
-def compute_reward(self):
+def compute_reward(self): 
     reward = -1
     for event in self.events:
-        if event == e.MOVED_RIGHT:
-            reward += 10
-        if event == e.MOVED_DOWN:
-            reward += 10
-    return reward
+        if event == e.BOMB_DROPPED:
+            reward += 0
+        elif event == e.COIN_COLLECTED:
+            reward += 100
+        elif event == e.CRATE_DESTROYED:
+            reward += 10 # 30
+        elif event == e.KILLED_SELF:
+            reward += -300
+        elif event == e.KILLED_OPPONENT:
+            reward += 100
+        elif event == e.GOT_KILLED:
+            reward += -300
+        elif event == e.WAITED:
+            reward += -5
+        elif event == e.INVALID_ACTION:
+            reward += -10
+        elif event == e.SURVIVED_ROUND:
+            reward += 0
+    #if PRINTING: print("events:", self.events, "current reward:", reward)
+    return reward ######### * GAMMA**self.game_state['step'] # Discounted Reward
+
+# def compute_reward(self):
+#     reward = -1
+#     for event in self.events:
+#         if event == e.MOVED_RIGHT:
+#             reward += 10
+#         if event == e.MOVED_DOWN:
+#             reward += 10
+#     return reward
 
 def end_of_episode(self): 
     # if the list of states is to short, just skip the evaluation
@@ -346,7 +424,7 @@ def end_of_episode(self):
         #    #print("q_values: ", q_values)
         #    if DEBUGGING: self.logger.debug("general, not isFit: q-values: "+ str(q_values))
 
-        q_values = get_q_update(q_values, action, reward, next_state)
+        q_values = get_q_update(self, q_values, action, reward, next_state, terminal)
         
         states_fit.append(state[0]) # TODO: not sure about the indices
         q_values_fit.append(q_values[0])
@@ -354,7 +432,7 @@ def end_of_episode(self):
         #print("######## state[0]:", state.shape, "\n######## q_values[0]", q_values.shape)
    
     
-    #print(np.array(states_fit).shape, np.array(q_values_fit[0]).shape)
+    #print(np.array(q_values_fit).shape, np.array(states_fit).shape)
     #print(q_values_fit)
     self.model.fit(states_fit, q_values_fit)
     
@@ -374,7 +452,7 @@ def end_of_episode(self):
     #self.observations = np.zeros((0,3))
     #self.rewards = np.zeros((0,1))                   
 
-def get_q_update(self, q_values, action, reward, next_state):
+def get_q_update(self, q_values, action, reward, next_state, terminal):
     action_id = np.argwhere(self.action_space == action)[0][0] # get the index of the selected action in the action space
     q_update = 0
     if not terminal: # does not matter for terminal states, since the reward is 0 and the next state does not exist
@@ -387,10 +465,10 @@ def get_q_update(self, q_values, action, reward, next_state):
             q_update = reward
             #print(str(q_update))
             if DEBUGGING: self.logger.debug("not terminal, not isFit: q update: " + str(q_update))
-    
+            
     q_values[0][action_id] = q_values[0][action_id] + LEARNING_RATE * (q_update - q_values[0][action_id])
-        
-    return q_update
+     
+    return q_values    
     
 
 def look_for_targets(free_space, start, targets, max_count = 2, logger=None):
