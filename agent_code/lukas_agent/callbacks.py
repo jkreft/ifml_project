@@ -54,8 +54,8 @@ def setup(self):
     self.action_space = ACTION_SPACE
     
     # initialize model
-    self.model = GBM(gbm_args)
-    #self.model = RegressionForest() 
+    #self.model = GBM(gbm_args)
+    self.model = RegressionForest() 
     self.isFit = False
     self.load_data = True
     self.step = 0

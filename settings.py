@@ -11,8 +11,8 @@ settings = {
     'coins': True,
     'crates': False,
     'bombs': False,
-    'training': False,
-    'gui': True,
+    'training': True,
+    'gui': False,
     
     # Display
     'width': 1000,
