@@ -20,7 +20,7 @@ training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
 analysis_interval = 2000
 save_interval = 1000000
-start_learning = 100000
+start_learning = 250000
 replay_buffer_size = 1000000
 target_interval = 1000
 feature_reduction = False
@@ -101,7 +101,7 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, -0.001, 0, -0.1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0] # coins
+        rewardtab = [0, 0, 0, 0, -0.001, 0, -0.05, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0] # coins
         #rewardtab = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # down
 
     # Initialize reward, loop through events, and add up rewards
@@ -149,7 +149,7 @@ def setup(self):
     self.model = DQN(self)
     self.targetmodel = DQN(self)
     self.model.network_setup(channels=self.stateshape[0], insize=self.stateshape[1],
-                             aint=analysis_interval, sint=save_interval, tint=target_interval, lr=0.0005)
+                             aint=analysis_interval, sint=save_interval, tint=target_interval, lr=0.001)
     self.targetmodel.network_setup(channels=self.stateshape[0], insize=self.stateshape[1])
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
@@ -237,17 +237,17 @@ def act(self):
                 nf = T.LongTensor([i for i in range(len(batch.nextstate)) if
                                    (batch.nextstate[i] == 0).sum().item() != np.prod(
                                        np.array(self.stateshape))])
-                nfnext = batch.nextstate[nf]
+                nfnextstate = batch.nextstate[nf]
 
                 if T.cuda.is_available():
                     batch.state = batch.state.cuda()
                     batch.action = batch.action.cuda()
-                    nfnext = nfnext.cuda()
+                    nfnextstate = nfnextstate.cuda()
                 #print('marker0')
                 self.stepq = self.model(batch.state) # Get q-values from state using the model
                 self.stepq = self.stepq.gather(1, batch.action) # Put together with actions
                 nextq = T.zeros((len(batch.nextstate), len(self.possibleact))).cpu()
-                nfnextq = self.targetmodel(nfnext).cpu()
+                nfnextq = self.targetmodel(nfnextstate).cpu()
 
                 # Let nextq only contain the output for which the input states were non-final
                 nextq.index_copy_(0, nf, nfnextq)

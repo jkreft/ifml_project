@@ -94,7 +94,7 @@ class DQN(nn.Module):
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.95, 0.001), minibatch=32, gamma=0.95, lr=0.001,
+    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.85, 0.001), minibatch=32, gamma=0.95, lr=0.001,
                       lint=8, tint=1000, sint=50000, aint=False):
 
         ### Hyperparameters ###
@@ -132,7 +132,7 @@ class DQN(nn.Module):
         self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
         self.activ2 = nn.functional.leaky_relu
         self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=1)
-        self.conv3drop = nn.Dropout2d()
+        self.conv3drop = nn.Dropout2d(p=0.1, training=self.agent.training)
         self.activ3 = nn.functional.leaky_relu
         self.fc4 = nn.Linear(64*conv_out(conv_out(conv_out(insize, ks=2, s=1), ks=2, s=2), ks=2, s=1)**2, 512)
         self.activ4 = nn.functional.leaky_relu
@@ -143,8 +143,8 @@ class DQN(nn.Module):
         ### Optimizer ###
 
         self.learningrate = lr
-        self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate, weight_decay=0.0001)
-
+        #self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate, weight_decay=0.0001)
+        self.optimizer = optim.RMSprop(self.parameters(), lr=self.learningrate, momentum=0.9, eps=0.0001, weight_decay=0.0001)
         # RMSprop???
 
         ### Loss function ###
@@ -191,7 +191,7 @@ class DQN(nn.Module):
         '''
         t = self.agent.trainingstep - self.agent.startlearning + 1
         if self.agent.trainingstep < self.agent.startlearning:
-            self.stepsilon = 0.95
+            self.stepsilon = 0.855
             if np.random.random() > self.stepsilon:
                 choice = 'random'
             else:

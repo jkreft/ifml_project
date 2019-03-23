@@ -11,11 +11,11 @@ settings = {
     # Display
     'width': 1000,
     'height': 600,
-    'gui': False,
+    'gui': True,
     'fps': 15,
 
     # Main loop
-    'update_interval': 0.05,
+    'update_interval': 0.01,
     'turn_based': False,
     'n_rounds': 500,
     'save_replay': False,
@@ -26,8 +26,8 @@ settings = {
     'rows': 17,
     'grid_size': 30,
     'crate_density': 0,
-    'actions': ['UP', 'DOWN', 'LEFT', 'RIGHT', 'WAIT', 'BOMB'],
-    'max_agents': 2,
+    'actions': ['UP', 'DOWN', 'LEFT', 'RIGHT', 'WAIT'],
+    'max_agents': 1,
     'max_steps': 400,
     'stop_if_not_training': False,
     'bomb_power': 3,
