@@ -9,4 +9,4 @@
 source ~/.bashrc
 conda activate pytorch
 cd ~/ifml/ifml_project
-CUDA_VISIBLE_DEVICES=0 python3 ~/ifml/ifml_project/jay.py
+CUDA_VISIBLE_DEVICES=1 python3 ~/ifml/ifml_project/jay.py
