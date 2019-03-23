@@ -127,16 +127,16 @@ class DQN(nn.Module):
         def conv_out(insize, ks=2, s=1):
             return (insize - (ks - 1) - 1) // s + 1
 
-        self.conv1 = nn.Conv2d(channels, 32, kernel_size=2, stride=1)
+        self.conv1 = nn.Conv2d(channels, 32, kernel_size=3, stride=1)
         self.activ1 = nn.functional.leaky_relu
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=1)
         self.activ2 = nn.functional.leaky_relu
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=1)
-        self.conv3drop = nn.Dropout2d(p=0.1, training=self.agent.training)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=2)
+        self.conv3drop = nn.functional.dropout2d
         self.activ3 = nn.functional.leaky_relu
-        self.fc4 = nn.Linear(64*conv_out(conv_out(conv_out(insize, ks=2, s=1), ks=2, s=2), ks=2, s=1)**2, 512)
+        self.fc4 = nn.Linear(64*conv_out(conv_out(conv_out(insize, ks=3, s=1), ks=2, s=1), ks=2, s=2)**2, 256)
         self.activ4 = nn.functional.leaky_relu
-        self.fc5 = nn.Linear(512, len(self.agent.possibleact))
+        self.fc5 = nn.Linear(256, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
         self.agent.logger.debug(self)
 
@@ -144,8 +144,7 @@ class DQN(nn.Module):
 
         self.learningrate = lr
         #self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate, weight_decay=0.0001)
-        self.optimizer = optim.RMSprop(self.parameters(), lr=self.learningrate, momentum=0.9, eps=0.0001, weight_decay=0.0001)
-        # RMSprop???
+        self.optimizer = optim.RMSprop(self.parameters(), lr=self.learningrate, momentum=0.9, eps=0.001, weight_decay=0.00001)
 
         ### Loss function ###
         #self.loss = nn.functional.smooth_l1_loss
@@ -176,8 +175,8 @@ class DQN(nn.Module):
         '''
         interm = self.activ1(self.conv1(input))
         interm = self.activ2(self.conv2(interm))
-        interm = self.activ3(self.conv3drop(self.conv3(interm)))
-        interm = self.activ4(self.fc4(interm.view(interm.size(0), -1)))
+        interm = self.activ3(self.conv3drop(self.conv3(interm), p=0.3, training=self.agent.training))
+        interm = self.activ4(self.fc4(interm.flatten()))
         output = self.fc5(interm)
         return output
 

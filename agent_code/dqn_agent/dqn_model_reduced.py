@@ -130,6 +130,7 @@ class DQN(nn.Module):
         self.layer1 = nn.Conv2d(channels, 32, kernel_size=1, stride=1)
         self.activ1 = nn.functional.leaky_relu
         self.layer2 = nn.Conv2d(32, 64, kernel_size=1, stride=1)
+        self.convdrop = nn.functional.dropout2d
         self.activ2 = nn.functional.leaky_relu
         self.layer3 = nn.Linear(64*conv_out(conv_out(insize, ks=1, s=1),ks=1, s=1)**2, 1024)
         self.activ3 = nn.functional.leaky_relu
@@ -174,7 +175,7 @@ class DQN(nn.Module):
         :return: Output tensor (q-value for all possible actions).
         '''
         interm = self.activ1(self.layer1(input))
-        interm = self.activ2(self.layer2(interm))
+        interm = self.activ2(self.convdrop(self.layer2(interm), p=0.05, training=self.agent.training))
         interm = self.activ3(self.layer3(interm))
         interm = self.activ4(self.layer4(interm.view(interm.size(0), -1)))
         output = self.fc5(interm)
