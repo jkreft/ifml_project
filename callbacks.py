@@ -18,10 +18,10 @@ from agent_code.dqn_agent.supports import construct_state_tensor, construct_redu
 resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
-analysis_interval = 2000
-save_interval = 1000000
-start_learning = 250000
-replay_buffer_size = 1000000
+analysis_interval = 800
+save_interval = 50000
+start_learning = 0
+replay_buffer_size = 50000
 target_interval = 1000
 feature_reduction = False
 
@@ -143,7 +143,7 @@ def setup(self):
     print(f'Cuda is{"" if self.cuda else " not"} available.')
     self.logger.info(f'Cuda is{"" if self.cuda else " not"} available.')
     # Adapt state-tensor to current task (bombs, other players, etc)
-    self.stateshape = (2, 5, 5) if feature_reduction else (3, s.cols, s.rows)
+    self.stateshape = (2, 9, 9) if feature_reduction else (3, s.cols, s.rows)
 
     # Create and setup model and target DQNs
     self.model = DQN(self)
@@ -197,9 +197,9 @@ def act(self):
     '''
     self.logger.info(f'Agent {self.name} is picking action ...')
     try:
-
         # Build state tensor
         self.stepstate = construct_state(self)
+        #print('marker after state construction')
 
         if not self.training:
             # Choose next action
@@ -236,7 +236,7 @@ def act(self):
                 # Non final check (like in pytorch RL tutorial)
                 nf = T.LongTensor([i for i in range(len(batch.nextstate)) if
                                    (batch.nextstate[i] == 0).sum().item() != np.prod(
-                                       np.array(self.stateshape))])
+                                       np.array(self.stateshape))]).to(self.device)
                 nfnextstate = batch.nextstate[nf]
 
                 if T.cuda.is_available():
@@ -246,8 +246,8 @@ def act(self):
                 #print('marker0')
                 self.stepq = self.model(batch.state) # Get q-values from state using the model
                 self.stepq = self.stepq.gather(1, batch.action) # Put together with actions
-                nextq = T.zeros((len(batch.nextstate), len(self.possibleact))).cpu()
-                nfnextq = self.targetmodel(nfnextstate).cpu()
+                nextq = T.zeros((len(batch.nextstate), len(self.possibleact))).to(self.device)
+                nfnextq = self.targetmodel(nfnextstate).to(self.device)
 
                 # Let nextq only contain the output for which the input states were non-final
                 nextq.index_copy_(0, nf, nfnextq)
