@@ -46,14 +46,10 @@ def construct_reduced_state_tensor(agent, silent=True):
     :param agent: Agent object.
     :return: State tensor (on cuda if available).
     '''
-    # state = T.zeros(agent.reducedstateshape)
-
     def noprint(*args):
         [print(args) if not silent else None]
 
-    state = np.zeros((2, 5, 5))
-    # state = T.zeros(agent.stateshape)
-
+    state = np.zeros(agent.stateshape)
     x, y, name, bombs_left, score = agent.game_state['self']
 
     radius = 1
@@ -62,7 +58,7 @@ def construct_reduced_state_tensor(agent, silent=True):
     mask_y = np.logical_and(range >= y - radius, range <= y + radius)
 
     # arena = agent.game_state['arena'][mask_y, :][:,mask_x]
-    state[0][0:3, 0:3] = agent.game_state['arena'][mask_y, :][:, mask_x]
+    state[0] = np.pad(agent.game_state['arena'][mask_y, :][:, mask_x], pad_width=1, mode='constant', constant_values=0)
 
     coins = agent.game_state['coins']
 
@@ -107,12 +103,13 @@ def construct_reduced_state_tensor(agent, silent=True):
     sectors, dist = get_sector(x, y, coins)
     noprint("sectors:", sectors)
     values = distance_to_value(dist)
-    state[1][0:3, 0:3] = sector_to_state(sectors, values)
+    state[1] = np.pad(sector_to_state(sectors, values), pad_width=1, mode='constant', constant_values=0)
 
     noprint("state 0:", state[0])
     noprint("state 1:", state[1])
 
     reducedstate = T.from_numpy(state)
+    print(reducedstate)
     if T.cuda.is_available():
         reduced = reducedstate.cuda()
     return reducedstate
@@ -122,7 +119,7 @@ def construct_reduced_state_tensor(agent, silent=True):
 def load_model(agent, modelpath=False, explaypath=False, trainingmode=False):
     try:
         if modelpath == False:
-            d = home + 'models/load/model/'
+            d = home + 'models/load/'
             # Choose first file in directory d
             modelpath = d + [x for x in os.listdir(d)][0]
         data = T.load(modelpath, map_location=agent.device)
@@ -135,8 +132,8 @@ def load_model(agent, modelpath=False, explaypath=False, trainingmode=False):
         agent.logger.info(f'Model was loaded from file at step {agent.trainingstep}')
         print(f'Model was loaded from file at step {agent.trainingstep}')
         if trainingmode:
-            if modelpath == False:
-                d = home + 'models/load/explay/'
+            if explaypath == False:
+                d = home + 'explay/load/'
                 # Choose first file in directory d
                 explaypath = d + [x for x in os.listdir(d)][0]
             data = T.load(explaypath)
@@ -171,7 +168,7 @@ def save_model(agent):
             os.mkdir(home + 'explay/')
         os.mkdir(home + 'explay/saved/')
     print(f'Saved model at step {agent.trainingstep}. Filename: {modelpath}')
-    explaypath = home + 'explay/saved/' + 'model-' + agent.modelname + '_step-' + str(agent.trainingstep) \
+    explaypath = home + 'explay/saved/' + 'explay-' + agent.modelname + '_step-' + str(agent.trainingstep) \
                + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
     T.save({
         'explay': agent.explay

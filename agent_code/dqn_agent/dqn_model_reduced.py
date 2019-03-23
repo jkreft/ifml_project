@@ -129,9 +129,9 @@ class DQN(nn.Module):
 
         self.layer1 = nn.Conv2d(channels, 32, kernel_size=1, stride=1)
         self.activ1 = nn.functional.leaky_relu
-        self.layer2 = nn.Linear(32*conv_out(insize, ks=1, s=1)**2, 512)
+        self.layer2 = nn.Conv2d(32, 64, kernel_size=1, stride=1)
         self.activ2 = nn.functional.leaky_relu
-        self.layer3 = nn.Linear(512, 1024)
+        self.layer3 = nn.Linear(64*conv_out(conv_out(insize, ks=1, s=1),ks=1, s=1)**2, 1024)
         self.activ3 = nn.functional.leaky_relu
         self.layer4 = nn.Linear(1024, 512)
         self.activ4 = nn.functional.leaky_relu
