@@ -160,7 +160,7 @@ def setup(self):
         load_model(self, trainingmode=training_mode)
     else:
         # Setup new experience replay
-        self.explay = Buffer(replay_buffer_size, self.stateshape)
+        self.explay = Buffer(replay_buffer_size, self.stateshape, device=self.device)
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
         self.logger.info('Modelname:' + self.modelname)
