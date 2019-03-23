@@ -17,15 +17,15 @@ class Buffer():
     Allows to take a random sample of defined maximal size from the buffer for learning.
     '''
 
-    def __init__(self, buffersize, stateshape):
+    def __init__(self, buffersize, stateshape, device=T.device('cpu')):
         self.buffersize = buffersize
         self.pos = 0
         self.fullness = 0
 
-        self.state = T.zeros((self.buffersize, *stateshape))
-        self.action = T.zeros((self.buffersize, 1)).long()
-        self.reward = T.zeros((self.buffersize, 1))
-        self.nextstate = T.zeros((self.buffersize, *stateshape))
+        self.state = T.zeros((self.buffersize, *stateshape)).to(device)
+        self.action = T.zeros((self.buffersize, 1)).long().to(device)
+        self.reward = T.zeros((self.buffersize, 1)).to(device)
+        self.nextstate = T.zeros((self.buffersize, *stateshape)).to(device)
 
 
     def __len__(self):
@@ -94,7 +94,7 @@ class DQN(nn.Module):
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.5, 0.001), minibatch=64, gamma=0.95, lr=0.001,
+    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.5, 0.001), minibatch=256, gamma=0.95, lr=0.002,
                       lint=8, tint=1000, sint=50000, aint=False):
 
         ### Hyperparameters ###
@@ -137,9 +137,9 @@ class DQN(nn.Module):
         self.activ3 = nn.functional.leaky_relu
         self.conv4 = nn.Conv2d(64, 64, kernel_size=2, stride=2)
         self.activ4 = nn.functional.leaky_relu
-        self.fc5 = nn.Linear(64*conv_out(conv_out(conv_out(conv_out(insize, ks=3, s=1), ks=3, s=1), ks=2, s=2),ks=2, s=2)**2, 192)
+        self.fc5 = nn.Linear(64*conv_out(conv_out(conv_out(conv_out(insize, ks=3, s=1), ks=3, s=1), ks=2, s=2),ks=2, s=2)**2, 256)
         self.activ5 = nn.functional.leaky_relu
-        self.fc6 = nn.Linear(192, len(self.agent.possibleact))
+        self.fc6 = nn.Linear(256, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
         self.agent.logger.debug(self)
 
