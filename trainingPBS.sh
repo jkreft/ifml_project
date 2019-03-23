@@ -2,11 +2,9 @@
 
 #PBS -S /bin/bash
 #PBS -q cuda
-#PBS -N ifml-pytorch
-#PBS -l nodes=denbi1-int
-#PBS -l walltime=4:00:00
-#PBS -e ~/ifml/qsub/stderr.err
-#PBS -o ~/ifml/qsub/stdout.log
+#PBS -N ifml-pytorch-cuda
+#PBS -l nodes=denbi2-int
+#PBS -l walltime=9:00:00
 
 source ~/.bashrc
 conda activate pytorch

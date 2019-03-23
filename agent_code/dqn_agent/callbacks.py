@@ -19,7 +19,7 @@ resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
 analysis_interval = 2000
-save_interval = 100000
+save_interval = 500000
 start_learning = 0
 replay_buffer_size = 1000000
 target_interval = 1000
@@ -143,8 +143,7 @@ def setup(self):
     print(f'Cuda is{"" if self.cuda else " not"} available.')
     self.logger.info(f'Cuda is{"" if self.cuda else " not"} available.')
     # Adapt state-tensor to current task (bombs, other players, etc)
-    channels = 2 if feature_reduction else 3
-    self.stateshape = (channels, 3, 3) if feature_reduction else (channels, s.cols, s.rows)
+    self.stateshape = (2, 5, 5) if feature_reduction else (3, s.cols, s.rows)
 
     # Create and setup model and target DQNs
     self.model = DQN(self)
@@ -218,6 +217,7 @@ def act(self):
             else:
                 # Choose next action
                 self.stepaction = select_action(self, rolemodel=rolemodel)
+            print('marker1')
 
             # Calculate reward for the events leading to this step
             self.stepreward = get_cookies(self)
@@ -247,9 +247,8 @@ def act(self):
                     batch.state = batch.state.cuda()
                     batch.action = batch.action.cuda()
                     nfnext = nfnext.cuda()
-                #print('marker0')
+                print('marker0')
                 self.stepq = self.model(batch.state) # Get q-values from state using the model
-                #print('marker1')
                 self.stepq = self.stepq.gather(1, batch.action) # Put together with actions
                 nextq = T.zeros((len(batch.nextstate), len(self.possibleact))).cpu()
                 nfnextq = self.targetmodel(nfnext).cpu()

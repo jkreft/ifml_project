@@ -132,6 +132,7 @@ class DQN(nn.Module):
         self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
         self.activ2 = nn.functional.leaky_relu
         self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=1)
+        self.conv3drop = nn.Dropout2d()
         self.activ3 = nn.functional.leaky_relu
         self.fc4 = nn.Linear(64*conv_out(conv_out(conv_out(insize, ks=2, s=1), ks=2, s=2), ks=2, s=1)**2, 512)
         self.activ4 = nn.functional.leaky_relu
@@ -175,7 +176,7 @@ class DQN(nn.Module):
         '''
         interm = self.activ1(self.conv1(input))
         interm = self.activ2(self.conv2(interm))
-        interm = self.activ3(self.conv3(interm))
+        interm = self.activ3(self.conv3drop(self.conv3(interm)))
         interm = self.activ4(self.fc4(interm.view(interm.size(0), -1)))
         output = self.fc5(interm)
         return output
