@@ -17,7 +17,7 @@ settings = {
     # Main loop
     'update_interval': 0,
     'turn_based': False,
-    'n_rounds': 8000,
+    'n_rounds': 10000,
     'save_replay': False,
     'make_video_from_replay': False,
 

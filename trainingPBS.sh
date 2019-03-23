@@ -3,8 +3,8 @@
 #PBS -S /bin/bash
 #PBS -q cuda
 #PBS -N ifml-pytorch-cuda
-#PBS -l nodes=denbi2-int
-#PBS -l walltime=9:00:00
+#PBS -l nodes=denbi1-int
+#PBS -l walltime=10:00:00
 
 source ~/.bashrc
 conda activate pytorch

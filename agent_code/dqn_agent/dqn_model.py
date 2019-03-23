@@ -191,11 +191,11 @@ class DQN(nn.Module):
         '''
         t = self.agent.trainingstep - self.agent.startlearning + 1
         if self.agent.trainingstep < self.agent.startlearning:
-            self.stepsilon = 0.5
-            if np.random.random() < self.stepsilon:
+            self.stepsilon = 0.95
+            if np.random.random() > self.stepsilon:
                 choice = 'random'
             else:
-                choice = 'policy'
+                choice = 'rolemodel'
         else:
             start, end, slope, exponent = self.eps
             start2, end2, slope2, exponent2 = self.eps2
