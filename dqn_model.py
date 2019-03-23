@@ -95,7 +95,7 @@ class DQN(nn.Module):
 
 
     def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.5, 0.001), minibatch=256, gamma=0.95, lr=0.002,
-                      lint=8, tint=1000, sint=50000, aint=False):
+                      lint=10, tint=100, sint=50000, aint=False):
 
         ### Hyperparameters ###
         totsteps = (self.agent.s.max_steps * self.agent.s.n_rounds) - self.agent.startlearning + 1
