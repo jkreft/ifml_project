@@ -94,7 +94,7 @@ class DQN(nn.Module):
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.85, 0.001), minibatch=32, gamma=0.95, lr=0.001,
+    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.5, 0.001), minibatch=64, gamma=0.95, lr=0.001,
                       lint=8, tint=1000, sint=50000, aint=False):
 
         ### Hyperparameters ###
@@ -127,16 +127,19 @@ class DQN(nn.Module):
         def conv_out(insize, ks=2, s=1):
             return (insize - (ks - 1) - 1) // s + 1
 
-        self.conv1 = nn.Conv2d(channels, 32, kernel_size=3, stride=1)
+        self.conv1 = nn.Conv2d(channels, 16, kernel_size=3, stride=1)
         self.activ1 = nn.functional.leaky_relu
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=1)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1)
         self.activ2 = nn.functional.leaky_relu
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=2)
+        #self.pad3 = nn.ConstantPad2d(1, 0)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
         self.conv3drop = nn.functional.dropout2d
         self.activ3 = nn.functional.leaky_relu
-        self.fc4 = nn.Linear(64*conv_out(conv_out(conv_out(insize, ks=3, s=1), ks=2, s=1), ks=2, s=2)**2, 256)
+        self.conv4 = nn.Conv2d(64, 64, kernel_size=2, stride=2)
         self.activ4 = nn.functional.leaky_relu
-        self.fc5 = nn.Linear(256, len(self.agent.possibleact))
+        self.fc5 = nn.Linear(64*conv_out(conv_out(conv_out(conv_out(insize, ks=3, s=1), ks=3, s=1), ks=2, s=2),ks=2, s=2)**2, 192)
+        self.activ5 = nn.functional.leaky_relu
+        self.fc6 = nn.Linear(192, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
         self.agent.logger.debug(self)
 
@@ -167,17 +170,31 @@ class DQN(nn.Module):
         self.agent.logger.info('Model initialized.')
 
 
-    def forward(self, input):
+    def forward(self, input, silent=True):
         '''
         Forward calculation of neural activations ...
         :param input: Input tensor.
         :return: Output tensor (q-value for all possible actions).
         '''
+        def noprint(*args):
+            [print(*args) if not silent else None]
+
+        noprint('Input:', input.shape)
         interm = self.activ1(self.conv1(input))
+        noprint('Conv1, lReLU:', interm.shape)
         interm = self.activ2(self.conv2(interm))
+        noprint('Conv2, lReLU:', interm.shape)
         interm = self.activ3(self.conv3drop(self.conv3(interm), p=0.3, training=self.agent.training))
-        interm = self.activ4(self.fc4(interm.flatten()))
-        output = self.fc5(interm)
+        noprint('Conv3, dropout, lReLU:', interm.shape)
+        interm = self.activ4(self.conv4(interm))
+        noprint('Conv4, lReLU:', interm.shape)
+        interm = interm.view(interm.size(0), -1)
+        noprint('".view(.size(0), -1)":', interm.shape)
+        interm = self.activ5(self.fc5(interm))
+        noprint('FC5, lReLU:', interm.shape)
+        output = self.fc6(interm)
+        noprint('Output:', output.shape)
+
         return output
 
 
@@ -190,7 +207,7 @@ class DQN(nn.Module):
         '''
         t = self.agent.trainingstep - self.agent.startlearning + 1
         if self.agent.trainingstep < self.agent.startlearning:
-            self.stepsilon = 0.855
+            self.stepsilon = 0.95
             if np.random.random() > self.stepsilon:
                 choice = 'random'
             else:

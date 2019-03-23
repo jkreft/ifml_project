@@ -50,7 +50,7 @@ def construct_reduced_state_tensor(agent, silent=True, zeropad=2):
     ######### help functions #########
 
     def noprint(*args):
-        [print(args) if not silent else None]
+        [print(*args) if not silent else None]
 
     def eucl_distance(dx, dy):
         ''' normal euclidean distance '''
@@ -253,18 +253,22 @@ class Analysisbuffer:
         self.expl = []
         self.loss = []
         self.q = []
+        self.weights = []
 
 def analysisbuffer():
     return Analysisbuffer()
 
 def step_analysis_data(agent):
-    agent.analysisbuffer.action.append(agent.stepaction.cpu().numpy())
-    agent.analysisbuffer.reward.append(agent.stepreward)
-    agent.analysisbuffer.score.append(agent.finalscore)
-    agent.analysisbuffer.epsilon.append([agent.model.stepsilon, agent.model.stepsilon2])
-    agent.analysisbuffer.expl.append(agent.exploration)
-    agent.analysisbuffer.loss.append(agent.plotloss.detach().numpy())
-    agent.analysisbuffer.q.append(agent.stepq.cpu().detach().numpy())
+    buff = agent.analysisbuffer
+    buff.action.append(agent.stepaction.cpu().numpy())
+    buff.reward.append(agent.stepreward)
+    buff.score.append(agent.finalscore)
+    buff.epsilon.append([agent.model.stepsilon, agent.model.stepsilon2])
+    buff.expl.append(agent.exploration)
+    buff.loss.append(agent.plotloss.detach().numpy())
+    buff.q.append(agent.stepq.cpu().detach().numpy())
+    avgweights = np.linalg.norm(np.concatenate([l.detach().numpy().flatten() for l in agent.model.parameters()]))
+    buff.weights.append(avgweights)
 
 
 def average_analysis_data(agent):
@@ -277,7 +281,8 @@ def average_analysis_data(agent):
         'epsilon': np.array(b.epsilon).mean(axis=0),
         'exploration': np.array([b.expl.count('policy'), b.expl.count('random'), b.expl.count('rolemodel')]),
         'loss': np.array(b.loss).mean(),
-        'q': np.array(b.q).mean()
+        'q': np.array(b.q).mean(),
+        'weights': np.array(b.weights).mean()
     }
     agent.analysis.append(avgdata)
     agent.analysisbuffer = Analysisbuffer()

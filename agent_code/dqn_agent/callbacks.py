@@ -17,11 +17,11 @@ from agent_code.dqn_agent.supports import construct_state_tensor, construct_redu
 resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
-analysis_interval = 1200
-save_interval = 50000
+analysis_interval = 2000
+save_interval = 500000
 start_learning = 0
-replay_buffer_size = 50000
-target_interval = 1000
+replay_buffer_size = 100000
+target_interval = 5000
 feature_reduction = False
 
 if feature_reduction:
@@ -151,7 +151,7 @@ def setup(self):
     self.model = DQN(self)
     self.targetmodel = DQN(self)
     self.model.network_setup(channels=self.stateshape[0], insize=self.stateshape[1],
-                             aint=analysis_interval, sint=save_interval, tint=target_interval, lr=0.001)
+                             aint=analysis_interval, sint=save_interval, tint=target_interval, lr=0.001, lint=10)
     self.targetmodel.network_setup(channels=self.stateshape[0], insize=self.stateshape[1])
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
@@ -249,15 +249,20 @@ def act(self):
                 self.stepq = self.model(batch.state) # Get q-values from state using the model
                 self.stepq = self.stepq.gather(1, batch.action) # Put together with actions
                 nextq = T.zeros((len(batch.nextstate), len(self.possibleact))).to(self.device)
-                nfnextq = self.targetmodel(nfnextstate).to(self.device)
+                #nfnextq = self.targetmodel(nfnextstate).to(self.device)
+                ##### Version without double-Q-learning #####
+                nfnextq = self.model(nfnextstate).to(self.device)
+
 
                 # Let nextq only contain the output for which the input states were non-final
                 nextq.index_copy_(0, nf, nfnextq)
                 nextq = nextq.max(1)[0]
 
+
+
                 # Expected q-values for current state
-                expectedq = ( (nextq * self.model.gamma) + batch.reward ).to(self.device)
-                self.steploss = self.model.loss(self.stepq, expectedq)
+                expectedq = (batch.reward + (nextq * self.model.gamma)).to(self.device)
+                self.steploss = self.model.loss(expectedq, self.stepq)
                 self.plotloss = self.steploss.cpu()
                 batch.state = batch.state.cpu()
                 batch.action = batch.action.cpu()
@@ -304,7 +309,7 @@ def end_of_episode(self):
     #finalscore = 0
     self.finalscore = self.game_state['self'][4]
     self.logger.info(f'Final score was: {self.finalscore}')
-    #print(f'Final score was: {self.finalscore}')
+    print(f'Final score was: {self.finalscore}')
 
     for i in range(len(self.episodeseq)):
         r = self.episodeseq[i][2]
