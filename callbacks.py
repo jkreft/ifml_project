@@ -18,10 +18,10 @@ resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
 analysis_interval = 2000
-save_interval = 500000
-start_learning = 0
+save_interval = 1000000
+start_learning = 1000000
 replay_buffer_size = 1000000
-target_interval = 1000
+target_interval = 800
 feature_reduction = False
 
 if feature_reduction:
