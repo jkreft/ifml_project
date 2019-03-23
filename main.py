@@ -116,7 +116,7 @@ def main():
                     sleep(sleep_time)
                 if not s.gui:
                     last_frame = time()
-    winsound.Beep(1500, 3000)
+    #winsound.Beep(1500, 3000)
     world.end()
 
 

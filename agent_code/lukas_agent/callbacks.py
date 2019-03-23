@@ -238,6 +238,15 @@ def get_current_state(self, state_version = STATE_VERSION):
         def eucl_distance(dx, dy):
             return np.sqrt(dx**2 + dy**2)
         
+        def filter_targets(x, y, targets, dist = 1):
+            ''' filters out all targets with a distance from the agent equal less than the distance (dist).
+                This allow to filter out the targets the agent is standing on (dist = 0),
+                as well as the targests that are already included in the 3x3 inner state ring (dist = 1) '''    
+            dx = np.atleast_2d(targets)[:,0] - x 
+            dy = y - np.atleast_2d(targets)[:,1]
+            mask = (eucl_distance(dx,dy) > dist) # all targets have to be at least 2 tiles away to be considers
+            return targets[mask]
+        
         # maybe this works better with arcsin or another convention
         def get_sector(x, y, targets, size = 8): # size = 16 for 5x5 state
             dx = np.atleast_2d(targets)[:,0] - x 
@@ -277,7 +286,7 @@ def get_current_state(self, state_version = STATE_VERSION):
                 print("sector shape:", sectors.shape, "values shape:", values.shape)
         
     
-    sectors, dist = get_sector(x, y, coins)
+    sectors, dist = get_sector(x, y, filter_targets(x, y, np.array(coins, dtype=np.int32), 0))
     #print("sectors:", sectors)
     state[1] = sector_to_state(sectors, distance_to_value(dist))
     
