@@ -46,73 +46,143 @@ def construct_reduced_state_tensor(agent, silent=True):
     :param agent: Agent object.
     :return: State tensor (on cuda if available).
     '''
+
+    ######### help functions #########
+
     def noprint(*args):
         [print(args) if not silent else None]
-
-    state = np.zeros(agent.stateshape)
-    x, y, name, bombs_left, score = agent.game_state['self']
-
-    radius = 1
-    range = np.arange(s.rows)
-    mask_x = np.logical_and(range >= x - radius, range <= x + radius)
-    mask_y = np.logical_and(range >= y - radius, range <= y + radius)
-
-    # arena = agent.game_state['arena'][mask_y, :][:,mask_x]
-    state[0] = np.pad(agent.game_state['arena'][mask_y, :][:, mask_x], pad_width=1, mode='constant', constant_values=0)
-
-    coins = agent.game_state['coins']
-
+    
     def eucl_distance(dx, dy):
-        return np.sqrt(dx ** 2 + dy ** 2)
-
+        ''' normal euclidean distance '''
+        return np.sqrt(dx**2 + dy**2)
+    
+    def filter_targets(x, y, targets, dist = 1):
+        ''' filters out all targets with a distance from the agent equal less than the distance (dist).
+            This allow to filter out the targets the agent is standing on (dist = 0),
+            as well as the targests that are already included in the 3x3 inner state ring (dist = 1) '''    
+        dx = np.atleast_2d(targets)[:,0] - x 
+        dy = y - np.atleast_2d(targets)[:,1]
+        mask = (eucl_distance(dx,dy) > dist) # all targets have to be at least 2 tiles away to be considers
+        return targets[mask]
+                              
     # maybe this works better with arcsin or another convention
-    def get_sector(x, y, targets, size=8):  # size = 16 for 5x5 state
-        dx = np.atleast_2d(targets)[:, 0] - x
-        dy = y - np.atleast_2d(targets)[:, 1]
+    def get_sector(x, y, targets, size = 16): # size = 8 for 3x3 state
+        ''' project all targets onto a ring of #size segments in the state
+        '''
+        dx = np.atleast_2d(targets)[:,0] - x 
+        dy = y - np.atleast_2d(targets)[:,1]
         dist = eucl_distance(dx, dy)
-        # print("sign:", np.sign(dy))
+        #print("sign:", np.sign(dy))
         offset = np.where(np.logical_or(np.sign(dy) < 0, np.logical_and(np.sign(dy) == 0, np.sign(dx) < 0)), 0, 2 * np.pi)
         sign = np.where(np.logical_or(np.sign(dy) < 0, np.logical_and(np.sign(dy) == 0, np.sign(dx) < 0)), 1, -1)
-        # print("offset:", offset)
-        # print("distances:", dx, dist)
-        noprint('Muenzen', coins)
+        #print("offset:", offset)
+        #print("distances:", dx, dist)
+        noprint('Targets', targets)
         noprint("angles:", (sign * np.arccos(dx / dist) + offset) * (360 / (2 * np.pi)))
         sectors = size * ((sign * np.arccos(dx / dist) + offset) / (2 * np.pi)) - (1 / 2)
-        sectors = np.where(sectors < 0, sectors + 8, sectors)
+        sectors = np.where(sectors < 0, sectors + size, sectors)
         return np.array(sectors, dtype=np.int64), dist
-
+    
+    # TODO: other value-function e.g. exponential instead of linear
     def distance_to_value(dist):
         ''' norm distance to the maximal distance on the board and invert the values
         '''
-        # value = 1 - dist/np.sqrt(s.rows**2 + s.cols**2)
-        # print("value", value)
+        #value = 1 - dist/np.sqrt(s.rows**2 + s.cols**2)
+        #print("value", value) 
         return 1 - dist / np.sqrt(s.rows ** 2 + s.cols ** 2)
-
-    def sector_to_state(sectors, values, size=8):
+    
+    def sector_to_state(sectors, values, size=16):
         ''' map the values according to their sectors (ring with #size segments) onto a state with size+1 entries
         '''
-        # indice>sector mapping = [[4,5,6], [3,8,7], [2,1,0]]
-        indices = [8, 7, 6, 3, 0, 1, 2, 5, 4]
-        state = np.zeros(size + 1)
-        noprint("sectors an stelle 0:", sectors[0])
-        for i in np.arange(sectors.shape[0]):
-            noprint("sector an stelle i: ", sectors[i])
-            state[indices[sectors[i]]] += values[i]
-        return state.reshape(3, 3)
+        try:
+            if size == 8:
+                #indices -> sector mapping = [[4,5,6], [3,8,7], [2,1,0]]
+                indices = [8, 7, 6, 3, 0, 1, 2, 5, 4]
+                state = np.zeros(size + 1)
+                for i in np.arange(sectors.shape[0]):
+                    state[indices[sectors[i]]] += values[i]
+                return state.reshape(3,3)
+            
+            elif size == 16:
+                # indices -> sector mapping = [[9,10,11,12,13], [9,20,21,22,14], [7,19,24,23,15], [6,18,17,16,0], [5,4,3,2,1]]
+                indices = [19, 24, 23, 22, 21, 20, 15, 10, 5, 0, 1, 2, 3, 4, 9, 14, 18, 17, 16, 11, 6, 7, 8, 13, 12]
+                state = np.zeros(size + 9)
+                for i in np.arange(sectors.shape[0]):
+                    state[indices[sectors[i]]] += values[i]
+                return state.reshape(5,5)
+            
+            else:
+                raise Exception("You choose the wrong size for the inner (8) or the outer (16) ring.")
+                
+        except Exception as error:
+            print("caught the following error:", error)
+    
+    
+    ######### state construction #########
+    
+    state = np.zeros(agent.stateshape)
 
-    sectors, dist = get_sector(x, y, coins)
+    x,y,name, bombs_left, score = agent.game_state['self']
+    
+    radius, size = 1, 16
+    range = np.arange(s.rows)
+    mask_x = np.logical_and(range >= x-radius, range <= x+radius)
+    mask_y = np.logical_and(range >= y-radius, range <= y+radius)
+        
+    
+    ######### arena #########
+    
+    arena = agent.game_state['arena']
+    
+    # projection of the crates on the outer state ring
+    try:
+        crates = filter_targets(x, y, np.argwhere(arena == 0)) #### TODO: replace target: free tiles = 0 with crates = 1
+        sectors, dist = get_sector(x, y, crates, size=16) 
+    except Exception as error:
+        print("hier ist auch schon ein Fehler aufgetreten:", error)
+    state[0] = sector_to_state(sectors, distance_to_value(dist), size = 16) 
+    
+    # inner 3x3 map
+    state[0][1:-1,1:-1] = arena[mask_y, :][:,mask_x]    
+    
+    ######### coins #########
+    
+    coins = agent.game_state['coins']
+    
+    # projection of the coins onto the outer state ring
+    sectors, dist = get_sector(x, y, coins, size=16)
     noprint("sectors:", sectors)
-    values = distance_to_value(dist)
-    state[1] = np.pad(sector_to_state(sectors, values), pad_width=1, mode='constant', constant_values=0)
+    state[1] = sector_to_state(sectors, distance_to_value(dist), size = 16)
+    
+    # inner 3x3 map             #### TODO: vectorize
+    coin_map = np.zeros((s.cols, s.rows))
+    for coin in coins:
+        coin_map[tuple(coin)] = 1
+    
+    state[1][1:-1,1:-1] = coin_map[mask_y, :][:,mask_x]
+    
+    
+    ######### other players #########
+    
+    others = [(x,y) for (x,y,n,b,s) in agent.game_state['others']]
+    print(others)
+    
+    
+    ######### return state ######### 
+    
+    # pad states
+    state[0] = np.pad(state[0], pad_width=1, mode='constant', constant_values=0)
+    state[1] = np.pad(state[0], pad_width=1, mode='constant', constant_values=0)
 
     noprint("state 0:", state[0])
     noprint("state 1:", state[1])
 
     reducedstate = T.from_numpy(state)
-    print(reducedstate)
+    print("final reduced state:",reducedstate)
     if T.cuda.is_available():
         reduced = reducedstate.cuda()
     return reducedstate
+
 
 
 ### Loading and Saving Models and Data ###

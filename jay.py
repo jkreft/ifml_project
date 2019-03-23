@@ -1,4 +1,3 @@
-# -*- coding: future_fstrings -*-
 # First line is to enable f-strings in python3.5 installation on servers
 
 from time import time, sleep
