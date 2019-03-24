@@ -17,15 +17,15 @@ class Buffer():
     Allows to take a random sample of defined maximal size from the buffer for learning.
     '''
 
-    def __init__(self, buffersize, stateshape):
+    def __init__(self, buffersize, stateshape, device=T.device('cpu')):
         self.buffersize = buffersize
         self.pos = 0
         self.fullness = 0
 
-        self.state = T.zeros((self.buffersize, *stateshape))
-        self.action = T.zeros((self.buffersize, 1)).long()
-        self.reward = T.zeros((self.buffersize, 1))
-        self.nextstate = T.zeros((self.buffersize, *stateshape))
+        self.state = T.zeros((self.buffersize, *stateshape)).to(device)
+        self.action = T.zeros((self.buffersize, 1)).long().to(device)
+        self.reward = T.zeros((self.buffersize, 1)).to(device)
+        self.nextstate = T.zeros((self.buffersize, *stateshape)).to(device)
 
 
     def __len__(self):
@@ -94,8 +94,8 @@ class DQN(nn.Module):
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.95, 0.001), minibatch=32, gamma=0.95, lr=0.001,
-                      lint=8, tint=1000, sint=50000, aint=False):
+    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.5, 0.001), minibatch=256, gamma=0.95, lr=0.002,
+                      lint=10, tint=100, sint=50000, aint=False):
 
         ### Hyperparameters ###
         totsteps = (self.agent.s.max_steps * self.agent.s.n_rounds) - self.agent.startlearning + 1
@@ -127,25 +127,27 @@ class DQN(nn.Module):
         def conv_out(insize, ks=2, s=1):
             return (insize - (ks - 1) - 1) // s + 1
 
-        self.conv1 = nn.Conv2d(channels, 32, kernel_size=2, stride=1)
+        self.conv1 = nn.Conv2d(channels, 16, kernel_size=3, stride=1)
         self.activ1 = nn.functional.leaky_relu
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1)
         self.activ2 = nn.functional.leaky_relu
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=1)
-        self.conv3drop = nn.Dropout2d()
+        #self.pad3 = nn.ConstantPad2d(1, 0)
+        self.conv3 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
+        self.conv3drop = nn.functional.dropout2d
         self.activ3 = nn.functional.leaky_relu
-        self.fc4 = nn.Linear(64*conv_out(conv_out(conv_out(insize, ks=2, s=1), ks=2, s=2), ks=2, s=1)**2, 512)
+        self.conv4 = nn.Conv2d(64, 64, kernel_size=2, stride=2)
         self.activ4 = nn.functional.leaky_relu
-        self.fc5 = nn.Linear(512, len(self.agent.possibleact))
+        self.fc5 = nn.Linear(64*conv_out(conv_out(conv_out(conv_out(insize, ks=3, s=1), ks=3, s=1), ks=2, s=2),ks=2, s=2)**2, 256)
+        self.activ5 = nn.functional.leaky_relu
+        self.fc6 = nn.Linear(256, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
         self.agent.logger.debug(self)
 
         ### Optimizer ###
 
         self.learningrate = lr
-        self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate, weight_decay=0.0001)
-
-        # RMSprop???
+        #self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate, weight_decay=0.0001)
+        self.optimizer = optim.RMSprop(self.parameters(), lr=self.learningrate, momentum=0.9, eps=0.001, weight_decay=0.00001)
 
         ### Loss function ###
         #self.loss = nn.functional.smooth_l1_loss
@@ -168,17 +170,31 @@ class DQN(nn.Module):
         self.agent.logger.info('Model initialized.')
 
 
-    def forward(self, input):
+    def forward(self, input, silent=True):
         '''
         Forward calculation of neural activations ...
         :param input: Input tensor.
         :return: Output tensor (q-value for all possible actions).
         '''
+        def noprint(*args):
+            [print(*args) if not silent else None]
+
+        noprint('Input:', input.shape)
         interm = self.activ1(self.conv1(input))
+        noprint('Conv1, lReLU:', interm.shape)
         interm = self.activ2(self.conv2(interm))
-        interm = self.activ3(self.conv3drop(self.conv3(interm)))
-        interm = self.activ4(self.fc4(interm.view(interm.size(0), -1)))
-        output = self.fc5(interm)
+        noprint('Conv2, lReLU:', interm.shape)
+        interm = self.activ3(self.conv3drop(self.conv3(interm), p=0.3, training=self.agent.training))
+        noprint('Conv3, dropout, lReLU:', interm.shape)
+        interm = self.activ4(self.conv4(interm))
+        noprint('Conv4, lReLU:', interm.shape)
+        interm = interm.view(interm.size(0), -1)
+        noprint('".view(.size(0), -1)":', interm.shape)
+        interm = self.activ5(self.fc5(interm))
+        noprint('FC5, lReLU:', interm.shape)
+        output = self.fc6(interm)
+        noprint('Output:', output.shape)
+
         return output
 
 
