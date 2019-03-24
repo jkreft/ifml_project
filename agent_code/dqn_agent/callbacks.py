@@ -18,11 +18,11 @@ from agent_code.dqn_agent.supports import construct_state_tensor, construct_redu
 resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
-max_trainingsteps = 200000
+max_trainingsteps = 1200000
 analysis_interval = 1000
-save_interval = 100000
+save_interval = 500000
 start_learning = 0
-replay_buffer_size = 100000
+replay_buffer_size = 400000
 feature_reduction = False
 
 if feature_reduction:
