@@ -54,8 +54,7 @@ def jay():
 
     if training_mode:
         world = BombeRLeWorld([
-            ('dqn_agent', True),
-            ('random_agent', False)
+            ('dqn_agent', True)
 ])
     else:
         # Initialize environment and agents

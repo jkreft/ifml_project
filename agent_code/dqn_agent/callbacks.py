@@ -8,7 +8,6 @@ import torch as T
 import torch.nn as nn
 from settings import s, e
 from agent_code.simple_agent import callbacks as rolemodel
-from agent_code.dqn_agent.dqn_model import DQN, Buffer
 from agent_code.dqn_agent.supports import construct_state_tensor, construct_reduced_state_tensor, load_model, \
     save_model, step_analysis_data, average_analysis_data, analysisbuffer
 
@@ -20,12 +19,15 @@ training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
 analysis_interval = 2000
 save_interval = 1000000
-start_learning = 100000
+start_learning = 1000000
 replay_buffer_size = 1000000
-target_interval = 1000
+target_interval = 800
 feature_reduction = False
 
-
+if feature_reduction:
+    from agent_code.dqn_agent.dqn_model_reduced import DQN, Buffer
+else:
+    from agent_code.dqn_agent.dqn_model import DQN, Buffer
 
 
 ########################################################################################################################
@@ -101,7 +103,7 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, -0.001, 0, -0.1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0] # coins
+        rewardtab = [0, 0, 0, 0, -0.001, 0, -0.05, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0] # coins
         #rewardtab = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # down
 
     # Initialize reward, loop through events, and add up rewards
@@ -143,13 +145,13 @@ def setup(self):
     print(f'Cuda is{"" if self.cuda else " not"} available.')
     self.logger.info(f'Cuda is{"" if self.cuda else " not"} available.')
     # Adapt state-tensor to current task (bombs, other players, etc)
-    self.stateshape = (2, 5, 5) if feature_reduction else (3, s.cols, s.rows)
+    self.stateshape = (2, 9, 9) if feature_reduction else (3, s.cols, s.rows)
 
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
     self.model.network_setup(channels=self.stateshape[0], insize=self.stateshape[1],
-                             aint=analysis_interval, sint=save_interval, tint=target_interval, lr=0.0005)
+                             aint=analysis_interval, sint=save_interval, tint=target_interval, lr=0.001, lint=10)
     self.targetmodel.network_setup(channels=self.stateshape[0], insize=self.stateshape[1])
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
@@ -158,7 +160,7 @@ def setup(self):
         load_model(self, trainingmode=training_mode)
     else:
         # Setup new experience replay
-        self.explay = Buffer(replay_buffer_size, self.stateshape)
+        self.explay = Buffer(replay_buffer_size, self.stateshape, device=self.device)
         self.modelname = str(datetime.now())[:-7]
         print('Modelname:', self.modelname)
         self.logger.info('Modelname:' + self.modelname)
@@ -197,9 +199,9 @@ def act(self):
     '''
     self.logger.info(f'Agent {self.name} is picking action ...')
     try:
-
         # Build state tensor
         self.stepstate = construct_state(self)
+        #print('marker after state construction')
 
         if not self.training:
             # Choose next action
@@ -236,26 +238,29 @@ def act(self):
                 # Non final check (like in pytorch RL tutorial)
                 nf = T.LongTensor([i for i in range(len(batch.nextstate)) if
                                    (batch.nextstate[i] == 0).sum().item() != np.prod(
-                                       np.array(self.stateshape))])
-                nfnext = batch.nextstate[nf]
+                                       np.array(self.stateshape))]).to(self.device)
+                nfnextstate = batch.nextstate[nf]
 
                 if T.cuda.is_available():
                     batch.state = batch.state.cuda()
                     batch.action = batch.action.cuda()
-                    nfnext = nfnext.cuda()
+                    nfnextstate = nfnextstate.cuda()
                 #print('marker0')
                 self.stepq = self.model(batch.state) # Get q-values from state using the model
                 self.stepq = self.stepq.gather(1, batch.action) # Put together with actions
-                nextq = T.zeros((len(batch.nextstate), len(self.possibleact))).cpu()
-                nfnextq = self.targetmodel(nfnext).cpu()
+                nextq = T.zeros((len(batch.nextstate), len(self.possibleact))).to(self.device)
+                nfnextq = self.targetmodel(nfnextstate).to(self.device)
+
+                ##### Version without double-Q-learning #####
+                #nfnextq = self.model(nfnextstate).to(self.device)
 
                 # Let nextq only contain the output for which the input states were non-final
                 nextq.index_copy_(0, nf, nfnextq)
                 nextq = nextq.max(1)[0]
 
                 # Expected q-values for current state
-                expectedq = ( (nextq * self.model.gamma) + batch.reward ).to(self.device)
-                self.steploss = self.model.loss(self.stepq, expectedq)
+                expectedq = (batch.reward + (nextq * self.model.gamma)).to(self.device)
+                self.steploss = self.model.loss(expectedq, self.stepq)
                 self.plotloss = self.steploss.cpu()
                 batch.state = batch.state.cpu()
                 batch.action = batch.action.cpu()
@@ -302,7 +307,7 @@ def end_of_episode(self):
     #finalscore = 0
     self.finalscore = self.game_state['self'][4]
     self.logger.info(f'Final score was: {self.finalscore}')
-    #print(f'Final score was: {self.finalscore}')
+    print(f'Final score was: {self.finalscore}')
 
     for i in range(len(self.episodeseq)):
         r = self.episodeseq[i][2]
