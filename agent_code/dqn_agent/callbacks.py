@@ -2,8 +2,9 @@
 # First line is to enable f-strings in python3.5 installation on servers
 
 import numpy as np
-import os
 from datetime import datetime
+import os
+import sys
 import torch as T
 import torch.nn as nn
 from settings import s, e
@@ -17,8 +18,9 @@ from agent_code.dqn_agent.supports import construct_state_tensor, construct_redu
 resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
-analysis_interval = 2000
-save_interval = 1000000
+max_trainingsteps = 4000000
+analysis_interval = 1000
+save_interval = 2000000
 start_learning = 0
 replay_buffer_size = 1000000
 target_interval = 800
@@ -103,11 +105,11 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, -0.001, 0, -0.05, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0] # coins
+        rewardtab = [0, 0, 0, 0, -0.1, 0, -10, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0] # coins
         #rewardtab = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # down
 
     # Initialize reward, loop through events, and add up rewards
-    reward = -0.05
+    reward = -5
     for event in events:
         reward += rewardtab[event]
     return reward
@@ -274,7 +276,7 @@ def act(self):
                     self.targetmodel.load_state_dict(self.model.state_dict())
                 self.model.learningstep += 1
 
-            # If analysisinterval True, save data and average over every interval
+            # If an analysisinterval is set, average over the interval and save data
             if self.model.analysisinterval:
                 step_analysis_data(self)
                 if t % self.model.analysisinterval == 0:
@@ -305,7 +307,7 @@ def end_of_episode(self):
     :param agent: Agent object.
     '''
     #finalscore = 0
-    self.finalscore = self.game_state['self'][4]
+    self.finalscore = self.game_state['self'][4] * 100
     self.logger.info(f'Final score was: {self.finalscore}')
     print(f'Final score was: {self.finalscore}')
 
@@ -317,3 +319,10 @@ def end_of_episode(self):
     self.model.explay.store_batch(self.episodeseq)
     self.trainingstep += 1
     self.episodeseq = []
+
+    if self.trainingstep > max_trainingsteps:
+        save_model(self)
+        if not os.path.exists(self.homedir + 'traininglog'):
+            os.mkdir(self.homedir + 'traininglog/')
+            with open(self.homedir + 'traininglog/' + self.modelname + '_reached_maxstep.info', 'w') as info:
+                info.write('\n' + self.modelname + ' has reached maximum training steps:\n' + str(max_trainingsteps))
