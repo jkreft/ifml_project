@@ -9,8 +9,8 @@ import torch as T
 import torch.nn as nn
 from settings import s, e
 from agent_code.simple_agent import callbacks as rolemodel
-from agent_code.dqn_agent.supports import construct_state_tensor, construct_reduced_state_tensor, load_model, \
-    save_model, step_analysis_data, average_analysis_data, analysisbuffer
+from agent_code.dqn_agent.supports import construct_state_tensor, construct_reduced_state_tensor,\
+    construct_time_state_tensor, load_model, save_model, step_analysis_data, average_analysis_data, analysisbuffer
 
 
 
@@ -18,11 +18,11 @@ from agent_code.dqn_agent.supports import construct_state_tensor, construct_redu
 resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
-max_trainingsteps = 4000000
+max_trainingsteps = 200000
 analysis_interval = 1000
-save_interval = 2000000
+save_interval = 100000
 start_learning = 0
-replay_buffer_size = 1000000
+replay_buffer_size = 100000
 feature_reduction = False
 
 if feature_reduction:
@@ -44,7 +44,7 @@ def construct_state(agent):
     :param agent: Agent object.
     :return: State tensor (on cuda if available).
     '''
-    return construct_reduced_state_tensor(agent) if feature_reduction else construct_state_tensor(agent)
+    return construct_reduced_state_tensor(agent) if feature_reduction else construct_time_state_tensor(agent)
 
 
 def select_action(agent, rolemodel=False):
@@ -146,14 +146,15 @@ def setup(self):
     print(f'Cuda is{"" if self.cuda else " not"} available.')
     self.logger.info(f'Cuda is{"" if self.cuda else " not"} available.')
     # Adapt state-tensor to current task (bombs, other players, etc)
-    self.stateshape = (2, 9, 9) if feature_reduction else (3, s.cols, s.rows)
+    historylen = 4
+    channels = 3
+    self.stateshape = (2, 9, 9) if feature_reduction else (historylen, s.cols, s.rows)
 
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
-    self.model.network_setup(channels=self.stateshape[0], insize=self.stateshape[1],
-                             aint=analysis_interval, sint=save_interval)
-    self.targetmodel.network_setup(channels=self.stateshape[0], insize=self.stateshape[1])
+    self.model.network_setup(aint=analysis_interval, sint=save_interval)
+    self.targetmodel.network_setup()
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
     # Load previous status from file or start training from the beginning
@@ -181,7 +182,7 @@ def setup(self):
 
     self.plotloss = T.zeros(1)
     self.stepq = T.zeros((1, self.model.batchsize))
-    self.laststate = None
+    self.laststate = T.zeros(self.stateshape).to(self.device)
     self.lastaction = None
     self.lastevents = None
     self.finalscore = 0
@@ -202,7 +203,6 @@ def act(self):
     try:
         # Build state tensor
         self.stepstate = construct_state(self)
-        #print('marker after state construction')
 
         if not self.training:
             # Choose next action

@@ -94,8 +94,8 @@ class DQN(nn.Module):
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=17, channels=1, eps=(1, 0.1), eps2=(0.001, 0.001), minibatch=32, gamma=0.99, lr=0.00025,
-                      lint=4, tint=10000/4, sint=500000, aint=False):
+    def network_setup(self, insize=(17, 17), channels=4, eps=(1, 0.1), eps2=(0.001, 0.001), minibatch=32, gamma=0.99,
+                      lr=0.00025, lint=4, tint=10000/4, sint=500000, aint=False):
 
         ### Hyperparameters ###
         totsteps = (self.agent.s.max_steps * self.agent.s.n_rounds) - self.agent.startlearning + 1
@@ -124,8 +124,19 @@ class DQN(nn.Module):
 
         ## Network architecture ###
 
-        def conv_out(insize, ks=2, s=1):
-            return (insize - (ks - 1) - 1) // s + 1
+        def conv_out(size, ks=1, s=1, p=0, d=1):
+            out = np.array([0, 0])
+            if type(ks) == type(int()):
+                ks = np.array([ks, ks])
+            if type(s) == type(int()):
+                s = np.array([s, s])
+            if type(p) == type(int()):
+                p = np.array([p, p])
+            if type(d) == type(int()):
+                d = np.array([d, d])
+            out[0] = (size[0] + 2 * p[0] - d[0] * (ks[0] - 1) - 1) / s[0] + 1
+            out[1] = (size[1] + 2 * p[1] - d[1] * (ks[1] - 1) - 1) / s[1] + 1
+            return out
 
         self.conv1 = nn.Conv2d(channels, 32, kernel_size=3, stride=1)
         self.activ1 = nn.functional.leaky_relu
@@ -133,7 +144,7 @@ class DQN(nn.Module):
         self.activ2 = nn.functional.leaky_relu
         self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=2)
         self.activ3 = nn.functional.leaky_relu
-        self.fc4 = nn.Linear(64*conv_out(conv_out(conv_out(insize, ks=3, s=1), ks=2, s=2), ks=2, s=2)**2, 512)
+        self.fc4 = nn.Linear(64*np.prod(conv_out(conv_out(conv_out(insize, ks=3, s=1), ks=2, s=2), ks=2, s=2)), 512)
         self.activ4 = nn.functional.leaky_relu
         self.fc5 = nn.Linear(512, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
