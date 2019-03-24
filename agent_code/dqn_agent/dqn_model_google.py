@@ -177,7 +177,7 @@ class DQN(nn.Module):
         self.agent.logger.info('Model initialized.')
 
 
-    def forward(self, input, silent=False):
+    def forward(self, input, silent=True):
         '''
         Forward calculation of neural activations ...
         :param input: Input tensor.
