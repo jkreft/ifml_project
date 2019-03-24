@@ -308,7 +308,7 @@ def step_analysis_data(agent):
     buff.expl.append(agent.exploration)
     buff.loss.append(agent.plotloss.detach().numpy())
     buff.q.append(agent.stepq.cpu().detach().numpy())
-    avgweights = np.linalg.norm(np.concatenate([l.detach().numpy().flatten() for l in agent.model.parameters()]))
+    avgweights = np.linalg.norm(np.concatenate([l.cpu().detach().numpy().flatten() for l in agent.model.parameters()]))
     buff.weights.append(avgweights)
 
 
