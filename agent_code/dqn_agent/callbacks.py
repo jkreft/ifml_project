@@ -9,20 +9,19 @@ import torch as T
 import torch.nn as nn
 from settings import s, e
 from agent_code.simple_agent import callbacks as rolemodel
-from agent_code.dqn_agent.supports import construct_state_tensor, construct_reduced_state_tensor,\
-    construct_time_state_tensor, load_model, save_model, step_analysis_data, average_analysis_data, analysisbuffer
-
+from agent_code.dqn_agent.supports import construct_state_tensor, construct_time_state_tensor, load_model, save_model,\
+    step_analysis_data, average_analysis_data, analysisbuffer
 
 
 ### Flags for choosing in which settings to run ###
 resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
-max_trainingsteps = 1200000
+max_trainingsteps = 600000
 analysis_interval = 1000
-save_interval = 500000
+save_interval = 200000
 start_policy = 0
-replay_buffer_size = 400000
+replay_buffer_size = 300000
 feature_reduction = False
 
 if feature_reduction:
@@ -104,11 +103,11 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, -0.1, 0, -10, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0] # coins
+        rewardtab = [0, 0, 0, 0, -0.01, 0, -1, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0] # coins
         #rewardtab = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # down
 
     # Initialize reward, loop through events, and add up rewards
-    reward = -5
+    reward = -0.5
     for event in events:
         reward += rewardtab[event]
     return reward
@@ -117,9 +116,6 @@ def get_cookies(agent, rewardtab=None):
 def construct_experience(agent):
     return agent.laststate, T.LongTensor([[agent.lastaction]]), T.tensor([agent.stepreward]).float(), agent.stepstate
 
-
-def terminal_state():
-    pass
 
 
 
@@ -238,26 +234,24 @@ def act(self):
                 batch = self.explay.sample(self.model.batchsize)
 
                 # Non final check (like in pytorch RL tutorial)
-                nf = T.LongTensor([i for i in range(len(batch.nextstate)) if
-                                   (batch.nextstate[i] == 0).sum().item() != np.prod(
-                                       np.array(self.stateshape))]).to(self.device)
-                nfnextstate = batch.nextstate[nf]
+                #nf = T.LongTensor([i for i in range(len(batch.nextstate)) if
+                #                   (batch.nextstate[i] == 0).sum().item() != np.prod(
+                #                       np.array(self.stateshape))]).to(self.device)
+                #nfnextstate = batch.nextstate[nf]
 
                 if T.cuda.is_available():
                     batch.state = batch.state.cuda()
                     batch.action = batch.action.cuda()
-                    nfnextstate = nfnextstate.cuda()
+                    batch.nextstate = batch.nextstate.cuda()
                 #print('marker0')
                 self.stepq = self.model(batch.state) # Get q-values from state using the model
                 self.stepq = self.stepq.gather(1, batch.action) # Put together with actions
                 nextq = T.zeros((len(batch.nextstate), len(self.possibleact))).to(self.device)
-                nfnextq = self.targetmodel(nfnextstate).to(self.device)
-
-                ##### Version without double-Q-learning #####
-                #nfnextq = self.model(nfnextstate).to(self.device)
+                nextq = self.targetmodel(batch.nextstate).to(self.device)
+                #nfnextq = self.targetmodel(nfnextstate).to(self.device)
 
                 # Let nextq only contain the output for which the input states were non-final
-                nextq.index_copy_(0, nf, nfnextq)
+                #nextq.index_copy_(0, nf, nfnextq)
                 nextq = nextq.max(1)[0]
 
                 # Expected q-values for current state
@@ -281,7 +275,7 @@ def act(self):
                 step_analysis_data(self)
                 if t % self.model.analysisinterval == 0:
                     average_analysis_data(self)
-
+            # If save interval is reached, save model and analysis to file
             if t % self.model.saveinterval == 0:
                 save_model(self)
 
@@ -307,14 +301,17 @@ def end_of_episode(self):
     :param agent: Agent object.
     '''
     #finalscore = 0
-    self.finalscore = self.game_state['self'][4] * 100
+    self.finalscore = self.game_state['self'][4] * 10
     self.logger.info(f'Final score was: {self.finalscore}')
-    print(f'Final score was: {self.finalscore}')
+    #print(f'Final score was: {self.finalscore}')
 
     for i in range(len(self.episodeseq)):
         r = self.episodeseq[i][2]
         r += self.finalscore/5
         self.episodeseq[i][2] = r
+
+    # For the last state in the episode (final state), set reward = 0
+    self.episodeseq[len(self.episodeseq)-1][2] = 0
 
     self.model.explay.store_batch(self.episodeseq)
     self.trainingstep += 1

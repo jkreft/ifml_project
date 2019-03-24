@@ -90,11 +90,11 @@ class DQN(nn.Module):
         self.agent = agent
         self.updates = 0
         self.stepsilon = 0
-        self.stepsilon2 =0
+        self.stepsilon2 = 0
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=(17, 17), channels=4, eps=(0.95, 0.05), eps2=(0.5, 0.001), minibatch=64, gamma=0.95,
+    def network_setup(self, insize=(17, 17), channels=4, eps=(0.95, 0.001), eps2=(0.25, 0.001), minibatch=64, gamma=0.95,
                       lr=0.0005, lint=8, tint=5000/8, sint=500000, aint=False):
 
         ### Hyperparameters ###
@@ -144,22 +144,34 @@ class DQN(nn.Module):
         self.activ2 = nn.functional.leaky_relu
         self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=2, padding=1)
         self.activ3 = nn.functional.leaky_relu
-        self.fc4 = nn.Linear(64*np.prod(conv_out(conv_out(conv_out(insize, ks=3, s=1, p=1), ks=2, s=1), ks=2, s=2, p=1)), 512)
+        self.fc4 = nn.Linear(64*np.prod(conv_out(conv_out(conv_out(insize, ks=3, s=1, p=1), ks=2, s=1), ks=2, s=2, p=1)), 256)
         self.activ4 = nn.functional.leaky_relu
-        self.fc5 = nn.Linear(512, len(self.agent.possibleact))
+        self.fc5 = nn.Linear(256, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
         self.agent.logger.debug(self)
 
         ### Optimizer ###
 
         self.learningrate = lr
-        #self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate, weight_decay=0.0001)
-        self.optimizer = optim.RMSprop(self.parameters(), lr=self.learningrate, momentum=0.95, eps=0.01, weight_decay=0.000001)
+        self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate, weight_decay=0.0001)
+        #self.optimizer = optim.RMSprop(self.parameters(), lr=self.learningrate, momentum=0.95, eps=0.01, weight_decay=0.000001)
 
         ### Loss function ###
         #self.loss = nn.functional.smooth_l1_loss
         self.loss = nn.functional.mse_loss
 
+        self.info = {
+            'lr': self.learningrate,
+            'lint': self.learninginterval,
+            'tint': self.targetinterval,
+            'eps': self.eps,
+            'eps2': self.eps2,
+            'batchsize': self.batchsize,
+            'gamma': self.gamma,
+            'optimizer': self.optimizer,
+            'loss': self.loss,
+            'architecture': str(self)
+        }
 
     def set_weights(self, random=True, file=False):
 
