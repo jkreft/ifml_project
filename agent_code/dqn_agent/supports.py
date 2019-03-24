@@ -46,6 +46,8 @@ def construct_reduced_state_tensor(agent, silent=True, zeropad=2):
     :param agent: Agent object.
     :return: State tensor (on cuda if available).
     '''
+    
+    print("construct reduced state tensor")
 
     ######### help functions #########
 

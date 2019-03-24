@@ -54,12 +54,18 @@ def jay():
 
     if training_mode:
         world = BombeRLeWorld([
-            ('dqn_agent', True)
-])
+            ('dqn_agent', True),
+            ('simple_agent', False),
+            ('simple_agent', False),
+            ('simple_agent', False)
+            ])
     else:
         # Initialize environment and agents
         world = BombeRLeWorld([
-            ('dqn_agent', False)
+            ('dqn_agent', False),
+            ('simple_agent', False),
+            ('simple_agent', False),
+            ('simple_agent', False)
             ])
     # world = ReplayWorld('Replay 2019-01-30 16:57:42')
     user_inputs = []
