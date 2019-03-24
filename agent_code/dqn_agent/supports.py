@@ -46,8 +46,6 @@ def construct_reduced_state_tensor(agent, silent=True, zeropad=2):
     :param agent: Agent object.
     :return: State tensor (on cuda if available).
     '''
-    
-    print("construct reduced state tensor")
 
     ######### help functions #########
 
@@ -62,9 +60,10 @@ def construct_reduced_state_tensor(agent, silent=True, zeropad=2):
         ''' filters out all targets with a distance from the agent equal less than the distance (dist).
             This allow to filter out the targets the agent is standing on (dist = 0),
             as well as the targests that are already included in the 3x3 inner state ring (dist = 1) '''
+        targets = np.array(targets)
         dx = np.atleast_2d(targets)[:, 0] - x
         dy = y - np.atleast_2d(targets)[:, 1]
-        mask = (eucl_distance(dx, dy) > dist)  # all targets have to be at least 2 tiles away to be considers
+        mask = (eucl_distance(dx, dy) > dist*1.45)  # all targets have to be at least 2 tiles away to be considers
         return targets[mask]
 
     # maybe this works better with arcsin or another convention
@@ -131,7 +130,7 @@ def construct_reduced_state_tensor(agent, silent=True, zeropad=2):
     range = np.arange(s.rows)
     mask_x = np.logical_and(range >= x - radius, range <= x + radius)
     mask_y = np.logical_and(range >= y - radius, range <= y + radius)
-
+    
     ######### arena #########
 
     arena = agent.game_state['arena']
@@ -150,36 +149,83 @@ def construct_reduced_state_tensor(agent, silent=True, zeropad=2):
 
     ######### coins #########
 
-    coins = agent.game_state['coins']
+    coins = np.array(agent.game_state['coins'])
 
-    # projection of the coins onto the outer state ring
-    sectors, dist = get_sector(x, y, coins, size=16)
-    noprint("sectors:", sectors)
-    state[1] = sector_to_state(sectors, distance_to_value(dist), size=16)
-
-    # inner 3x3 map             #### TODO: vectorize
-    coin_map = np.zeros((s.cols, s.rows))
-    for coin in coins:
-        coin_map[tuple(coin)] = 1
-
-    state[1][1:-1, 1:-1] = coin_map[mask_y, :][:, mask_x]
+    if coins.size > 0:
+    
+        # projection of the coins onto the outer state ring
+        sectors, dist = get_sector(x, y, filter_targets(x, y, coins, dist=1), size=16)
+        noprint("sectors:", sectors)
+        
+        state[1] = sector_to_state(sectors, distance_to_value(dist), size=16)
+    
+        # inner 3x3 map             #### TODO: vectorize
+        coins_map = np.zeros((s.cols, s.rows))
+        coins_map[tuple(np.array(coins).T)] = 1
+    
+        state[1][1:-1, 1:-1] = coins_map[mask_y, :][:, mask_x]
 
     ######### other players #########
+    
+    others = np.array([(x, y) for (x, y, n, b, s) in agent.game_state['others']])
+    
+    if shp[0] >= 3 and others.size > 0:
+        
+        # projection
+        sectors, dist = get_sector(x, y, filter_targets(x, y, others, 1), size=16)
+        noprint("sectors:", sectors)
+        state[2] = sector_to_state(sectors, distance_to_value(dist), size=16)
+        
+        # inner 3x3 map
+        others_map = np.zeros((s.cols,  s.rows))
+        others_map[tuple(np.array(others).T)] = 1
+        state[2][1:-1, 1:-1] = others_map[mask_y, :][:, mask_x]
 
-    others = [(x, y) for (x, y, n, b, s) in agent.game_state['others']]
-    print(others)
+        
+    ######### bombs #########   at the moment with one layer
+    
+    bombs = np.array(agent.game_state['bombs']) # (x,y,t)
+    
+    if shp[0] >= 4 and bombs.size > 0:        
+        #bombs_xy =  filter_targets(x, y, bombs[:,0:2], 1)
+        #arg_bombs = np.argwhere( bombs_xy == bombs[:,0:2])
+        #print(arg_bombs)
+        print("bomb timer:", bombs[:,2])
+        
+        # bombs projection 5x5 map
+        sectors, dist = get_sector(x, y, filter_targets(x, y, bombs[:,0:2], 1), size=16) 
+        print(sectors, dist)
+        if sectors.size > 0:
+            values = distance_to_value(dist) + (1 / (filter_targets(x,y,bombs[:,2],1)+1)) # normal distance value + a 
+            state[1] = sector_to_state(sectors, values, size=16)
+        
+        # inner 3x3 map
+        bombs_map = np.zeros((s.cols,  s.rows))
+        
+        i = 0
+        for b in np.atleast_2d(bombs[:,0:2]):
+            print("b:", b)
+            bombs_map[tuple(b)] = bombs[i:,2]
+            i += 1
+        print(bombs_map)
+        state[1][1:-1, 1:-1] = bombs_map[mask_y, :][:, mask_x]
+        
+        print(state[1])
 
     ######### return state #########
 
-    # pad states
-    state[0] = np.pad(state[0], pad_width=2, mode='constant', constant_values=0)
-    state[1] = np.pad(state[0], pad_width=2, mode='constant', constant_values=0)
-
+    
+    #state[0] = np.pad(state[0], pad_width=2, mode='constant', constant_values=0)
+    #state[1] = np.pad(state[0], pad_width=2, mode='constant', constant_values=0)
+    
+    # pad state
+    state = np.array([np.pad(s, pad_width = 2, mode="constant", constant_values = 0) for s in state])
+    
     noprint("state 0:", state[0])
     noprint("state 1:", state[1])
 
     reducedstate = T.from_numpy(state)
-    print("final reduced state:", reducedstate)
+    noprint("final reduced state:", reducedstate)
     if T.cuda.is_available():
         reducedstate = reducedstate.cuda()
     return reducedstate

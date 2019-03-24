@@ -15,14 +15,14 @@ from agent_code.dqn_agent.supports import construct_state_tensor, construct_redu
 
 ### Flags for choosing in which settings to run ###
 resume_training = False
-training_mode = False if s.gui else True
-load_from_file = resume_training if training_mode else True
+training_mode = False #False if s.gui else True
+load_from_file = False #resume_training if training_mode else True
 analysis_interval = 2000
 save_interval = 1000000
 start_learning = 1000000
 replay_buffer_size = 1000000
 target_interval = 800
-feature_reduction = False
+feature_reduction = True
 
 if feature_reduction:
     from agent_code.dqn_agent.dqn_model_reduced import DQN, Buffer
