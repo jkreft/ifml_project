@@ -49,7 +49,9 @@ def construct_time_state_tensor(agent):
     state = T.zeros(*ss)
     newest = ss[0]-1
     # Shift last screen into the past, drop oldest, leave room for one new screen
-    state[0:ss[0]-2] = agent.laststate[1:newest]
+    state[0] = agent.laststate[1]
+    state[1] = agent.laststate[2]
+    state[2] = agent.laststate[3]
     # Represent the object layers in one single image-like tensor
     # Initialize numpy array layers
     coins, walls, crates, myself = [np.zeros_like(agent.game_state['arena']) for i in range(4)]
@@ -75,6 +77,11 @@ def construct_time_state_tensor(agent):
 
     if T.cuda.is_available():
         state = state.cuda()
+    print('State:')
+    print(state.shape)
+    for i in range(state.shape[0]):
+        print(i)
+        print(state[i])
     return state
 
 
@@ -323,7 +330,13 @@ def average_analysis_data(agent):
         'exploration': np.array([b.expl.count('policy'), b.expl.count('random'), b.expl.count('rolemodel')]),
         'loss': np.array(b.loss).mean(),
         'q': np.array(b.q).mean(),
-        'weights': np.array(b.weights).mean()
+        'weights': np.array(b.weights).mean(),
+        'example': {
+            'state': agent.stepstate,
+            'q': agent.stepq,
+            'loss': agent.steploss,
+
+        }
     }
     agent.analysis.append(avgdata)
     agent.analysisbuffer = Analysisbuffer()
