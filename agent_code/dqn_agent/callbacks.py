@@ -18,10 +18,10 @@ resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
 analysis_interval = 2000
-save_interval = 500000
-start_learning = 0
-replay_buffer_size = 100000
-target_interval = 5000
+save_interval = 1000000
+start_learning = 1000000
+replay_buffer_size = 1000000
+target_interval = 800
 feature_reduction = False
 
 if feature_reduction:
@@ -249,16 +249,14 @@ def act(self):
                 self.stepq = self.model(batch.state) # Get q-values from state using the model
                 self.stepq = self.stepq.gather(1, batch.action) # Put together with actions
                 nextq = T.zeros((len(batch.nextstate), len(self.possibleact))).to(self.device)
-                #nfnextq = self.targetmodel(nfnextstate).to(self.device)
-                ##### Version without double-Q-learning #####
-                nfnextq = self.model(nfnextstate).to(self.device)
+                nfnextq = self.targetmodel(nfnextstate).to(self.device)
 
+                ##### Version without double-Q-learning #####
+                #nfnextq = self.model(nfnextstate).to(self.device)
 
                 # Let nextq only contain the output for which the input states were non-final
                 nextq.index_copy_(0, nf, nfnextq)
                 nextq = nextq.max(1)[0]
-
-
 
                 # Expected q-values for current state
                 expectedq = (batch.reward + (nextq * self.model.gamma)).to(self.device)

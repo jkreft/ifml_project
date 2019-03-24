@@ -231,6 +231,7 @@ def save_model(agent):
         'trainingstep': agent.trainingstep,
         'learninginterval': agent.model.learninginterval,
     }, modelpath)
+    '''
     if not os.path.exists(home + 'explay/saved/'):
         if not os.path.exists(home + 'explay/'):
             os.mkdir(home + 'explay/')
@@ -242,7 +243,7 @@ def save_model(agent):
         'explay': agent.explay
     }, explaypath)
     print(f'Saved experience replay buffer. Filename: {explaypath}')
-
+    '''
 
 class Analysisbuffer:
     def __init__(self):
