@@ -149,12 +149,12 @@ def setup(self):
     historylen = 4
     channels = 3
     self.stateshape = (2, 9, 9) if feature_reduction else (historylen, s.cols, s.rows)
-
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
     self.model.network_setup(aint=analysis_interval, sint=save_interval)
     self.targetmodel.network_setup()
+
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
     # Load previous status from file or start training from the beginning
@@ -163,7 +163,7 @@ def setup(self):
     else:
         # Setup new experience replay
         self.explay = Buffer(replay_buffer_size, self.stateshape, device=self.device)
-        self.modelname = str(datetime.now())[:-7].split(' ').join('-')
+        self.modelname = '-'.join(str(datetime.now())[:-7].split(' '))
         print('Modelname:', self.modelname)
         self.logger.info('Modelname:' + self.modelname)
 
@@ -175,16 +175,13 @@ def setup(self):
         self.trainingstep = 1
         self.model.learningstep = 1
         self.analysis = []
-
     if self.training:
         self.model.explay = self.explay
         self.targetmodel.explay = self.explay
         self.plotloss = T.zeros(1)
         self.stepq = T.zeros((1, self.model.batchsize))
 
-    print('marker vor laststate')
     self.laststate = T.zeros(self.stateshape).to(self.device)
-    print('marker nach laststate')
     self.lastaction = None
     self.lastevents = None
     self.episodeseq = []
