@@ -21,7 +21,7 @@ load_from_file = resume_training if training_mode else True
 max_trainingsteps = 1200000
 analysis_interval = 1000
 save_interval = 500000
-start_learning = 0
+start_policy = 0
 replay_buffer_size = 400000
 feature_reduction = False
 
@@ -140,7 +140,7 @@ def setup(self):
     self.logger.info(f'Mode: {modestr}')
     self.s, self.e = s, e
     self.analysisbuffer = analysisbuffer()
-    self.startlearning = start_learning
+    self.startpolicy = start_policy
     self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
     self.cuda = T.cuda.is_available()
     print(f'Cuda is{"" if self.cuda else " not"} available.')
@@ -163,7 +163,7 @@ def setup(self):
     else:
         # Setup new experience replay
         self.explay = Buffer(replay_buffer_size, self.stateshape, device=self.device)
-        self.modelname = str(datetime.now())[:-7]
+        self.modelname = str(datetime.now())[:-7].split(' ').join('-')
         print('Modelname:', self.modelname)
         self.logger.info('Modelname:' + self.modelname)
 
@@ -176,19 +176,23 @@ def setup(self):
         self.model.learningstep = 1
         self.analysis = []
 
-    self.model.explay = self.explay
-    self.targetmodel.explay = self.explay
-    self.episodeseq = []
+    if self.training:
+        self.model.explay = self.explay
+        self.targetmodel.explay = self.explay
+        self.plotloss = T.zeros(1)
+        self.stepq = T.zeros((1, self.model.batchsize))
 
-    self.plotloss = T.zeros(1)
-    self.stepq = T.zeros((1, self.model.batchsize))
+    print('marker vor laststate')
     self.laststate = T.zeros(self.stateshape).to(self.device)
+    print('marker nach laststate')
     self.lastaction = None
     self.lastevents = None
+    self.episodeseq = []
     self.finalscore = 0
 
     # Setting up simple_agent as "role model" for collecting good training data in the first steps
     rolemodel.setup(self)
+    self.model.info = {'explaysize': replay_buffer_size}
     self.logger.debug('Sucessfully completed setup code.')
 
 

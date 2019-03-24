@@ -269,6 +269,7 @@ def save_model(agent):
         'analysis': agent.analysis,
         'trainingstep': agent.trainingstep,
         'learninginterval': agent.model.learninginterval,
+        'info': agent.model.info,
     }, modelpath)
     '''
     if not os.path.exists(home + 'explay/saved/'):

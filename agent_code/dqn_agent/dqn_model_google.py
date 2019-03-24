@@ -94,11 +94,11 @@ class DQN(nn.Module):
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=(17, 17), channels=4, eps=(0.95, 0.05), eps2=(0.001, 0.001), minibatch=64, gamma=0.95,
+    def network_setup(self, insize=(17, 17), channels=4, eps=(0.95, 0.05), eps2=(0.5, 0.001), minibatch=64, gamma=0.95,
                       lr=0.0005, lint=8, tint=5000/8, sint=500000, aint=False):
 
         ### Hyperparameters ###
-        totsteps = (self.agent.s.max_steps * self.agent.s.n_rounds) - self.agent.startlearning + 1
+        totsteps = (self.agent.s.max_steps * self.agent.s.n_rounds) - self.agent.startpolicy + 1
         self.decayfct = 'exp'
         self.eps = (                                                                # Match ε-decay to n_round
             eps[0],                                                                 # Starting value
@@ -138,13 +138,13 @@ class DQN(nn.Module):
             out[1] = (size[1] + 2 * p[1] - d[1] * (ks[1] - 1) - 1) / s[1] + 1
             return out
 
-        self.conv1 = nn.Conv2d(channels, 32, kernel_size=3, stride=1)
+        self.conv1 = nn.Conv2d(channels, 32, kernel_size=3, stride=1, padding=1)
         self.activ1 = nn.functional.leaky_relu
-        self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=1)
         self.activ2 = nn.functional.leaky_relu
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=2)
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=2, padding=1)
         self.activ3 = nn.functional.leaky_relu
-        self.fc4 = nn.Linear(64*np.prod(conv_out(conv_out(conv_out(insize, ks=3, s=1), ks=2, s=2), ks=2, s=2)), 512)
+        self.fc4 = nn.Linear(64*np.prod(conv_out(conv_out(conv_out(insize, ks=3, s=1, p=1), ks=2, s=1), ks=2, s=2, p=1)), 512)
         self.activ4 = nn.functional.leaky_relu
         self.fc5 = nn.Linear(512, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
@@ -177,7 +177,7 @@ class DQN(nn.Module):
         self.agent.logger.info('Model initialized.')
 
 
-    def forward(self, input, silent=True):
+    def forward(self, input, silent=False):
         '''
         Forward calculation of neural activations ...
         :param input: Input tensor.
@@ -210,8 +210,8 @@ class DQN(nn.Module):
         :param decay: Type of decay for the ε-threshold {'lin', 'exp'}
         :return: True if decided to explore.
         '''
-        t = self.agent.trainingstep - self.agent.startlearning + 1
-        if self.agent.trainingstep < self.agent.startlearning:
+        t = self.agent.trainingstep - self.agent.startpolicy + 1
+        if self.agent.trainingstep < self.agent.startpolicy:
             self.stepsilon = 0.95
             if np.random.random() > self.stepsilon:
                 choice = 'random'
