@@ -21,15 +21,14 @@ load_from_file = resume_training if training_mode else True
 max_trainingsteps = 4000000
 analysis_interval = 1000
 save_interval = 2000000
-start_learning = 1000000
+start_learning = 0
 replay_buffer_size = 1000000
-target_interval = 800
 feature_reduction = False
 
 if feature_reduction:
     from agent_code.dqn_agent.dqn_model_reduced import DQN, Buffer
 else:
-    from agent_code.dqn_agent.dqn_model import DQN, Buffer
+    from agent_code.dqn_agent.dqn_model_google import DQN, Buffer
 
 
 ########################################################################################################################
@@ -153,7 +152,7 @@ def setup(self):
     self.model = DQN(self)
     self.targetmodel = DQN(self)
     self.model.network_setup(channels=self.stateshape[0], insize=self.stateshape[1],
-                             aint=analysis_interval, sint=save_interval, tint=target_interval, lr=0.001, lint=10)
+                             aint=analysis_interval, sint=save_interval)
     self.targetmodel.network_setup(channels=self.stateshape[0], insize=self.stateshape[1])
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
