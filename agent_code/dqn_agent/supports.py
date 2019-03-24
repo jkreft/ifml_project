@@ -38,6 +38,43 @@ def construct_state_tensor(agent):
         state = state.cuda()
     return state
 
+### Construct the tensor representing the game state in each step ###
+def construct_time_state_tensor(agent):
+    '''
+    Create image-like (pixel-based) state tensor from game_state data.
+    :param agent: Agent object.
+    :return: State tensor (on cuda if available).
+    '''
+    ss = agent.stateshape
+    state = T.zeros(*agent.stateshape)
+    newest = ss[0]-1
+    # Shift last screen into the past, drop oldest, leave room for one new screen
+    state[0:ss[0]-2] = agent.laststate[1:newest]
+    # Represent the arena (walls, ...)
+    coins = walls = crates = myself = np.zeros_like(agent.game_state['arena'])
+    walls[np.where(agent.game_state['arena'] == -1)] = 10
+    crates[np.where(agent.game_state['arena'] == +1)] = 20
+    myself[agent.game_state['self'][0], agent.game_state['self'][1]] = 100
+    for coin in agent.game_state['coins']:
+        coins[coin[0], coin[1]] = 40
+    state[newest] += T.from_numpy(walls)
+    state[newest] += T.from_numpy(crates)
+    state[newest] += T.from_numpy(myself)
+    state[newest] += T.from_numpy(coins)
+
+    # Other players' positions
+    #for other in agent.game_state['others']:
+    #    state[2, other[0], other[1]] = 1
+    # Bomb position and countdown-timers
+    #for bomb in agent.game_state['bombs']:
+    #    state[3, bomb[0], bomb[1]] = bomb[2]
+    # Positions of explosions
+    #state[4] = T.from_numpy(agent.game_state['explosions'])
+    if T.cuda.is_available():
+        state = state.cuda()
+    print(state)
+    return state
+
 
 ### Construct a feature-reduced version of the state tensor
 def construct_reduced_state_tensor(agent, silent=True, zeropad=2):

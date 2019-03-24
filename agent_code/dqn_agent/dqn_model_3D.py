@@ -94,8 +94,8 @@ class DQN(nn.Module):
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=17, channels=1, eps=(0.95, 0.05), eps2=(0.5, 0.001), minibatch=256, gamma=0.95, lr=0.002,
-                      lint=10, tint=500, sint=100000, aint=False):
+    def network_setup(self, insize=(3, 17, 17), channels=4, eps=(1, 0.1), eps2=(0.001, 0.001), minibatch=32, gamma=0.99,
+                      lr=0.00025, lint=8, tint=10000/8, sint=500000, aint=False):
 
         ### Hyperparameters ###
         totsteps = (self.agent.s.max_steps * self.agent.s.n_rounds) - self.agent.startlearning + 1
@@ -124,30 +124,54 @@ class DQN(nn.Module):
 
         ## Network architecture ###
 
-        def conv_out(insize, ks=2, s=1):
-            return (insize - (ks - 1) - 1) // s + 1
+        def conv_out(size, ks=1, s=1, p=0, d=1):
+            out = np.array([0,0,0])
+            if type(ks) == type(int()):
+                ks = np.array([ks, ks, ks])
+            if type(s) == type(int()):
+                s = np.array([s, s, s])
+            if type(p) == type(int()):
+                p = np.array([p, p, p])
+            if type(d) == type(int()):
+                d = np.array([d, d, d])
+            out[0] = (size[0] + 2 * p[0] - d[0] * (ks[0] - 1) - 1) / s[0] + 1
+            out[1] = (size[1] + 2 * p[1] - d[1] * (ks[1] - 1) - 1) / s[1] + 1
+            out[2] = (size[2] + 2 * p[2] - d[2] * (ks[2] - 1) - 1) / s[2] + 1
+            return out
 
-        self.conv1 = nn.Conv2d(channels, 16, kernel_size=3, stride=1)
+
+        self.conv1 = nn.Conv3d(channels, 32, kernel_size=2, stride=1)
         self.activ1 = nn.functional.leaky_relu
-        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1)
+        self.conv2 = nn.Conv3d(32, 64, kernel_size=2, stride=2, padding=1)
         self.activ2 = nn.functional.leaky_relu
-        #self.pad3 = nn.ConstantPad2d(1, 0)
-        self.conv3 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
-        self.conv3drop = nn.functional.dropout2d
+        self.conv3= nn.Conv3d(64, 64, kernel_size=2, stride=1)
         self.activ3 = nn.functional.leaky_relu
-        self.conv4 = nn.Conv2d(64, 64, kernel_size=2, stride=2)
+        self.fc4 = nn.Linear(64 * np.prod(conv_out(conv_out(conv_out(insize, ks=2, s=1), ks=2, s=2, p=1), ks=1, s=1)), 512)
         self.activ4 = nn.functional.leaky_relu
-        self.fc5 = nn.Linear(64*conv_out(conv_out(conv_out(conv_out(insize, ks=3, s=1), ks=3, s=1), ks=2, s=2),ks=2, s=2)**2, 256)
-        self.activ5 = nn.functional.leaky_relu
-        self.fc6 = nn.Linear(256, len(self.agent.possibleact))
+        self.fc5 = nn.Linear(512, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
         self.agent.logger.debug(self)
+
+
+        '''
+        self.conv1 = nn.Conv2d(channels, 32, kernel_size=3, stride=1)
+        self.activ1 = nn.functional.leaky_relu
+        self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=2)
+        self.activ2 = nn.functional.leaky_relu
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=2)
+        self.activ3 = nn.functional.leaky_relu
+        self.fc4 = nn.Linear(64*conv_out(conv_out(conv_out(insize, ks=3, s=1), ks=2, s=2), ks=2, s=2)**2, 512)
+        self.activ4 = nn.functional.leaky_relu
+        self.fc5 = nn.Linear(512, len(self.agent.possibleact))
+        self.agent.logger.info('DQN is set up.')
+        self.agent.logger.debug(self)
+        '''
 
         ### Optimizer ###
 
         self.learningrate = lr
         #self.optimizer = optim.Adam(self.parameters(), lr=self.learningrate, weight_decay=0.0001)
-        self.optimizer = optim.RMSprop(self.parameters(), lr=self.learningrate, momentum=0.9, eps=0.001, weight_decay=0.00001)
+        self.optimizer = optim.RMSprop(self.parameters(), lr=self.learningrate, momentum=0.95, eps=0.01, weight_decay=0.000001)
 
         ### Loss function ###
         #self.loss = nn.functional.smooth_l1_loss
@@ -184,15 +208,13 @@ class DQN(nn.Module):
         noprint('Conv1, lReLU:', interm.shape)
         interm = self.activ2(self.conv2(interm))
         noprint('Conv2, lReLU:', interm.shape)
-        interm = self.activ3(self.conv3drop(self.conv3(interm), p=0.3, training=self.agent.training))
-        noprint('Conv3, dropout, lReLU:', interm.shape)
-        interm = self.activ4(self.conv4(interm))
+        interm = self.activ3(self.conv3(interm))
         noprint('Conv4, lReLU:', interm.shape)
         interm = interm.view(interm.size(0), -1)
         noprint('".view(.size(0), -1)":', interm.shape)
-        interm = self.activ5(self.fc5(interm))
-        noprint('FC5, lReLU:', interm.shape)
-        output = self.fc6(interm)
+        interm = self.activ4(self.fc4(interm))
+        noprint('FC4, lReLU:', interm.shape)
+        output = self.fc5(interm)
         noprint('Output:', output.shape)
 
         return output
