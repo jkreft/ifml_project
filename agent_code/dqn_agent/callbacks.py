@@ -17,11 +17,11 @@ from agent_code.dqn_agent.supports import construct_state_tensor, construct_time
 resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
-max_trainingsteps = 600000
-analysis_interval = 1000
-save_interval = 200000
+max_trainingsteps = 1050000
+analysis_interval = 5000
+save_interval = 1000000
 start_policy = 0
-replay_buffer_size = 300000
+replay_buffer_size = 1000000
 feature_reduction = False
 
 if feature_reduction:
@@ -103,7 +103,7 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, -0.01, 0, -1, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0] # coins
+        rewardtab = [10, 0, 0, 0, -0.01, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # coins
         #rewardtab = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # down
 
     # Initialize reward, loop through events, and add up rewards
@@ -182,6 +182,7 @@ def setup(self):
     self.lastevents = None
     self.episodeseq = []
     self.finalscore = 0
+    self.finished = False
 
     # Setting up simple_agent as "role model" for collecting good training data in the first steps
     rolemodel.setup(self)
@@ -234,24 +235,24 @@ def act(self):
                 batch = self.explay.sample(self.model.batchsize)
 
                 # Non final check (like in pytorch RL tutorial)
-                #nf = T.LongTensor([i for i in range(len(batch.nextstate)) if
-                #                   (batch.nextstate[i] == 0).sum().item() != np.prod(
-                #                       np.array(self.stateshape))]).to(self.device)
-                #nfnextstate = batch.nextstate[nf]
+                nf = T.LongTensor([i for i in range(len(batch.nextstate)) if
+                                   (batch.nextstate[i] == 0).sum().item() != np.prod(
+                                       np.array(self.stateshape))]).to(self.device)
+                nfnextstate = batch.nextstate[nf]
 
                 if T.cuda.is_available():
                     batch.state = batch.state.cuda()
                     batch.action = batch.action.cuda()
-                    batch.nextstate = batch.nextstate.cuda()
+                    nfnextstate = nfnextstate.cuda()
                 #print('marker0')
                 self.stepq = self.model(batch.state) # Get q-values from state using the model
                 self.stepq = self.stepq.gather(1, batch.action) # Put together with actions
                 nextq = T.zeros((len(batch.nextstate), len(self.possibleact))).to(self.device)
-                nextq = self.targetmodel(batch.nextstate).to(self.device)
-                #nfnextq = self.targetmodel(nfnextstate).to(self.device)
+                #nextq = self.targetmodel(batch.nextstate).to(self.device)
+                nfnextq = self.targetmodel(nfnextstate).to(self.device)
 
                 # Let nextq only contain the output for which the input states were non-final
-                #nextq.index_copy_(0, nf, nfnextq)
+                nextq.index_copy_(0, nf, nfnextq)
                 nextq = nextq.max(1)[0]
 
                 # Expected q-values for current state
@@ -300,8 +301,8 @@ def end_of_episode(self):
     When in training mode, called at the end of each episode.
     :param agent: Agent object.
     '''
-    #finalscore = 0
     self.finalscore = self.game_state['self'][4] * 10
+    self.finalscore = 0
     self.logger.info(f'Final score was: {self.finalscore}')
     #print(f'Final score was: {self.finalscore}')
 
@@ -317,9 +318,10 @@ def end_of_episode(self):
     self.trainingstep += 1
     self.episodeseq = []
 
-    if self.trainingstep > max_trainingsteps:
+    if (self.trainingstep > max_trainingsteps) and (self.finished == False):
         save_model(self)
         if not os.path.exists(self.homedir + 'traininglog'):
             os.mkdir(self.homedir + 'traininglog/')
             with open(self.homedir + 'traininglog/' + self.modelname + '_reached_maxstep.info', 'w') as info:
                 info.write('\n' + self.modelname + ' has reached maximum training steps:\n' + str(max_trainingsteps))
+        self.finished = True

@@ -119,7 +119,7 @@ def load_model(agent, modelpath=False, explaypath=False, trainingmode=False):
         print(f'A file could not be found. Error: {error}\nModel and buffer were not loaded!')
 
 
-def save_model(agent):
+def save_model(agent, save_explay=False):
     if not os.path.exists(home + 'models/saved/'):
         if not os.path.exists(home + 'models/'):
             os.mkdir(home + 'models/')
@@ -134,19 +134,18 @@ def save_model(agent):
         'learninginterval': agent.model.learninginterval,
         'info': agent.model.info,
     }, modelpath)
-    '''
-    if not os.path.exists(home + 'explay/saved/'):
-        if not os.path.exists(home + 'explay/'):
-            os.mkdir(home + 'explay/')
-        os.mkdir(home + 'explay/saved/')
-    print(f'Saved model at step {agent.trainingstep}. Filename: {modelpath}')
-    explaypath = home + 'explay/saved/' + 'explay-' + agent.modelname + '_step-' + str(agent.trainingstep) \
-               + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
-    T.save({
-        'explay': agent.explay
-    }, explaypath)
-    print(f'Saved experience replay buffer. Filename: {explaypath}')
-    '''
+    if save_explay:
+        if not os.path.exists(home + 'explay/saved/'):
+            if not os.path.exists(home + 'explay/'):
+                os.mkdir(home + 'explay/')
+            os.mkdir(home + 'explay/saved/')
+        print(f'Saved model at step {agent.trainingstep}. Filename: {modelpath}')
+        explaypath = home + 'explay/saved/' + 'explay-' + agent.modelname + '_step-' + str(agent.trainingstep) \
+                   + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
+        T.save({
+            'explay': agent.explay
+        }, explaypath)
+        print(f'Saved experience replay buffer. Filename: {explaypath}')
 
 class Analysisbuffer:
     def __init__(self):
