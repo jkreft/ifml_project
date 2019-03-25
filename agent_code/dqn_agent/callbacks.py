@@ -4,25 +4,23 @@
 import numpy as np
 from datetime import datetime
 import os
-import sys
 import torch as T
 import torch.nn as nn
 from settings import s, e
 from agent_code.simple_agent import callbacks as rolemodel
-from agent_code.dqn_agent.supports import construct_state_tensor, construct_reduced_state_tensor,\
-    construct_time_state_tensor, load_model, save_model, step_analysis_data, average_analysis_data, analysisbuffer
-
+from agent_code.dqn_agent.supports import construct_state_tensor, construct_time_state_tensor, load_model, save_model,\
+    step_analysis_data, average_analysis_data, analysisbuffer
 
 
 ### Flags for choosing in which settings to run ###
 resume_training = False
 training_mode = False if s.gui else True
 load_from_file = resume_training if training_mode else True
-max_trainingsteps = 200000
-analysis_interval = 1000
-save_interval = 100000
-start_learning = 0
-replay_buffer_size = 100000
+max_trainingsteps = 1050000
+analysis_interval = 5000
+save_interval = 1000000
+start_policy = 100000
+replay_buffer_size = 1000000
 feature_reduction = False
 
 if feature_reduction:
@@ -104,11 +102,11 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, -0.1, 0, -10, 0, 0, 0, 0, 100, 0, 0, 0, 0, 0] # coins
-        #rewardtab = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # down
+        rewardtab = [0, 0, 0, 0, -0.01, 0, -1, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0] # coins
+        #rewardtab = [0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # down
 
     # Initialize reward, loop through events, and add up rewards
-    reward = -5
+    reward = -0.5
     for event in events:
         reward += rewardtab[event]
     return reward
@@ -116,10 +114,6 @@ def get_cookies(agent, rewardtab=None):
 
 def construct_experience(agent):
     return agent.laststate, T.LongTensor([[agent.lastaction]]), T.tensor([agent.stepreward]).float(), agent.stepstate
-
-
-def terminal_state():
-    pass
 
 
 
@@ -140,7 +134,7 @@ def setup(self):
     self.logger.info(f'Mode: {modestr}')
     self.s, self.e = s, e
     self.analysisbuffer = analysisbuffer()
-    self.startlearning = start_learning
+    self.startpolicy = start_policy
     self.device = T.device('cuda' if T.cuda.is_available() else 'cpu')
     self.cuda = T.cuda.is_available()
     print(f'Cuda is{"" if self.cuda else " not"} available.')
@@ -149,12 +143,12 @@ def setup(self):
     historylen = 4
     channels = 3
     self.stateshape = (2, 9, 9) if feature_reduction else (historylen, s.cols, s.rows)
-
     # Create and setup model and target DQNs
     self.model = DQN(self)
     self.targetmodel = DQN(self)
     self.model.network_setup(aint=analysis_interval, sint=save_interval)
     self.targetmodel.network_setup()
+
     # Put DQNs on cuda if available
     self.model, self.targetmodel = self.model.to(self.device), self.targetmodel.to(self.device)
     # Load previous status from file or start training from the beginning
@@ -163,9 +157,9 @@ def setup(self):
     else:
         # Setup new experience replay
         self.explay = Buffer(replay_buffer_size, self.stateshape, device=self.device)
-        self.modelname = str(datetime.now())[:-7]
-        print('Modelname:', self.modelname)
-        self.logger.info('Modelname:' + self.modelname)
+        self.modelname = '-'.join(str(datetime.now())[:-7].split(' '))
+        print('Modelname: ', self.modelname)
+        self.logger.info('Modelname: ' + self.modelname)
 
         # Initialize model DQN and target DQN weights randomly
         self.model.set_weights(random=True)
@@ -175,21 +169,22 @@ def setup(self):
         self.trainingstep = 1
         self.model.learningstep = 1
         self.analysis = []
+    if self.training:
+        self.model.explay = self.explay
+        self.targetmodel.explay = self.explay
+        self.plotloss = T.zeros(1)
+        self.stepq = T.zeros((1, self.model.batchsize))
 
-    self.model.explay = self.explay
-    self.targetmodel.explay = self.explay
-    self.episodeseq = []
-
-    self.plotloss = T.zeros(1)
-    self.stepq = T.zeros((1, self.model.batchsize))
     self.laststate = T.zeros(self.stateshape).to(self.device)
-    print('marker laststate')
     self.lastaction = None
     self.lastevents = None
+    self.episodeseq = []
     self.finalscore = 0
+    self.finished = False
 
     # Setting up simple_agent as "role model" for collecting good training data in the first steps
     rolemodel.setup(self)
+    self.model.info = {'explaysize': replay_buffer_size}
     self.logger.debug('Sucessfully completed setup code.')
 
 
@@ -204,7 +199,6 @@ def act(self):
     try:
         # Build state tensor
         self.stepstate = construct_state(self)
-        print('marker after state construction')
 
         if not self.training:
             # Choose next action
@@ -250,12 +244,10 @@ def act(self):
                     nfnextstate = nfnextstate.cuda()
                 #print('marker0')
                 self.stepq = self.model(batch.state) # Get q-values from state using the model
-                self.stepq = self.stepq.gather(1, batch.action) # Put together with actions
+                self.stepq = self.stepq.gather(1, batch.action).to(self.device) # Put together with actions
                 nextq = T.zeros((len(batch.nextstate), len(self.possibleact))).to(self.device)
+                #nextq = self.targetmodel(batch.nextstate).to(self.device)
                 nfnextq = self.targetmodel(nfnextstate).to(self.device)
-
-                ##### Version without double-Q-learning #####
-                #nfnextq = self.model(nfnextstate).to(self.device)
 
                 # Let nextq only contain the output for which the input states were non-final
                 nextq.index_copy_(0, nf, nfnextq)
@@ -282,7 +274,7 @@ def act(self):
                 step_analysis_data(self)
                 if t % self.model.analysisinterval == 0:
                     average_analysis_data(self)
-
+            # If save interval is reached, save model and analysis to file
             if t % self.model.saveinterval == 0:
                 save_model(self)
 
@@ -307,23 +299,28 @@ def end_of_episode(self):
     When in training mode, called at the end of each episode.
     :param agent: Agent object.
     '''
-    #finalscore = 0
-    self.finalscore = self.game_state['self'][4] * 100
+    self.finalscore = self.game_state['self'][4] * 10
+    self.finalscore = 0
     self.logger.info(f'Final score was: {self.finalscore}')
-    print(f'Final score was: {self.finalscore}')
+    #print(f'Final score was: {self.finalscore}')
 
     for i in range(len(self.episodeseq)):
         r = self.episodeseq[i][2]
         r += self.finalscore/5
         self.episodeseq[i][2] = r
 
+    # For the last state in the episode (final state), set reward = 0
+    self.episodeseq[len(self.episodeseq)-1][2] = 0
+
     self.model.explay.store_batch(self.episodeseq)
     self.trainingstep += 1
     self.episodeseq = []
+    self.laststate = T.zeros(self.stateshape).to(self.device)
 
-    if self.trainingstep > max_trainingsteps:
+    if (self.trainingstep > max_trainingsteps) and (self.finished == False):
         save_model(self)
         if not os.path.exists(self.homedir + 'traininglog'):
             os.mkdir(self.homedir + 'traininglog/')
             with open(self.homedir + 'traininglog/' + self.modelname + '_reached_maxstep.info', 'w') as info:
                 info.write('\n' + self.modelname + ' has reached maximum training steps:\n' + str(max_trainingsteps))
+        self.finished = True

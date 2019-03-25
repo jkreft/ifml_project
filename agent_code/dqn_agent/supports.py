@@ -41,26 +41,31 @@ def construct_state_tensor(agent):
 ### Construct the tensor representing the game state in each step ###
 def construct_time_state_tensor(agent):
     '''
-    Create image-like (pixel-based) state tensor from game_state data.
+    Create image-like (pixel-based) single object channel, multi-frame state tensor from game_state data.
     :param agent: Agent object.
     :return: State tensor (on cuda if available).
     '''
     ss = agent.stateshape
-    state = T.zeros(*agent.stateshape)
+    state = T.zeros(*ss)
     newest = ss[0]-1
     # Shift last screen into the past, drop oldest, leave room for one new screen
-    state[0:ss[0]-2] = agent.laststate[1:newest]
-    # Represent the arena (walls, ...)
-    coins = walls = crates = myself = np.zeros_like(agent.game_state['arena'])
-    walls[np.where(agent.game_state['arena'] == -1)] = 10
-    crates[np.where(agent.game_state['arena'] == +1)] = 20
-    myself[agent.game_state['self'][0], agent.game_state['self'][1]] = 100
+    state[0] = agent.laststate[1]
+    state[1] = agent.laststate[2]
+    state[2] = agent.laststate[3]
+    # Represent the object layers in one single image-like tensor
+    # Initialize numpy array layers
+    coins, walls, crates, myself = [np.zeros_like(agent.game_state['arena']) for i in range(4)]
+    # Set "Brightness value" for each
+    walls[np.where(agent.game_state['arena'] == -1)] = 1
+    crates[np.where(agent.game_state['arena'] == +1)] = 2
+    myself[agent.game_state['self'][0], agent.game_state['self'][1]] = 10
     for coin in agent.game_state['coins']:
-        coins[coin[0], coin[1]] = 40
-    state[newest] += T.from_numpy(walls)
-    state[newest] += T.from_numpy(crates)
-    state[newest] += T.from_numpy(myself)
-    state[newest] += T.from_numpy(coins)
+        coins[coin[0], coin[1]] = 4
+    state[newest] += T.from_numpy(walls).to(dtype=T.float)
+    state[newest] += T.from_numpy(crates).to(dtype=T.float)
+    state[newest] += T.from_numpy(myself).to(dtype=T.float)
+    state[newest] += T.from_numpy(coins).to(dtype=T.float)
+    #state[newest] = state[newest] - T.from_numpy(np.ones_like(myself)*5).to(dtype=T.float)
 
     # Other players' positions
     #for other in agent.game_state['others']:
@@ -70,154 +75,15 @@ def construct_time_state_tensor(agent):
     #    state[3, bomb[0], bomb[1]] = bomb[2]
     # Positions of explosions
     #state[4] = T.from_numpy(agent.game_state['explosions'])
+
     if T.cuda.is_available():
         state = state.cuda()
-    print(state)
+    #print('State:')
+    #print(state.shape)
+    #for i in range(state.shape[0]):
+    #    print(i)
+    #    print(state[i])
     return state
-
-
-### Construct a feature-reduced version of the state tensor
-def construct_reduced_state_tensor(agent, silent=True, zeropad=2):
-    '''
-    Create reduced state tensor from game_state data.
-    :param agent: Agent object.
-    :return: State tensor (on cuda if available).
-    '''
-
-    ######### help functions #########
-
-    def noprint(*args):
-        [print(*args) if not silent else None]
-
-    def eucl_distance(dx, dy):
-        ''' normal euclidean distance '''
-        return np.sqrt(dx ** 2 + dy ** 2)
-
-    def filter_targets(x, y, targets, dist=1):
-        ''' filters out all targets with a distance from the agent equal less than the distance (dist).
-            This allow to filter out the targets the agent is standing on (dist = 0),
-            as well as the targests that are already included in the 3x3 inner state ring (dist = 1) '''
-        dx = np.atleast_2d(targets)[:, 0] - x
-        dy = y - np.atleast_2d(targets)[:, 1]
-        mask = (eucl_distance(dx, dy) > dist)  # all targets have to be at least 2 tiles away to be considers
-        return targets[mask]
-
-    # maybe this works better with arcsin or another convention
-    def get_sector(x, y, targets, size=16):  # size = 8 for 3x3 state
-        ''' project all targets onto a ring of #size segments in the state
-        '''
-        dx = np.atleast_2d(targets)[:, 0] - x
-        dy = y - np.atleast_2d(targets)[:, 1]
-        dist = eucl_distance(dx, dy)
-        # print("sign:", np.sign(dy))
-        offset = np.where(np.logical_or(np.sign(dy) < 0, np.logical_and(np.sign(dy) == 0, np.sign(dx) < 0)), 0,
-                          2 * np.pi)
-        sign = np.where(np.logical_or(np.sign(dy) < 0, np.logical_and(np.sign(dy) == 0, np.sign(dx) < 0)), 1, -1)
-        # print("offset:", offset)
-        # print("distances:", dx, dist)
-        noprint('Targets', targets)
-        noprint("angles:", (sign * np.arccos(dx / dist) + offset) * (360 / (2 * np.pi)))
-        sectors = size * ((sign * np.arccos(dx / dist) + offset) / (2 * np.pi)) - (1 / 2)
-        sectors = np.where(sectors < 0, sectors + size, sectors)
-        return np.array(sectors, dtype=np.int64), dist
-
-    # TODO: other value-function e.g. exponential instead of linear
-    def distance_to_value(dist):
-        ''' norm distance to the maximal distance on the board and invert the values
-        '''
-        # value = 1 - dist/np.sqrt(s.rows**2 + s.cols**2)
-        # print("value", value)
-        return 1 - dist / np.sqrt(s.rows ** 2 + s.cols ** 2)
-
-    def sector_to_state(sectors, values, size=16):
-        ''' map the values according to their sectors (ring with #size segments) onto a state with size+1 entries
-        '''
-        try:
-            if size == 8:
-                # indices -> sector mapping = [[4,5,6], [3,8,7], [2,1,0]]
-                indices = [8, 7, 6, 3, 0, 1, 2, 5, 4]
-                state = np.zeros(size + 1)
-                for i in np.arange(sectors.shape[0]):
-                    state[indices[sectors[i]]] += values[i]
-                return state.reshape(3, 3)
-
-            elif size == 16:
-                # indices -> sector mapping = [[9,10,11,12,13], [9,20,21,22,14], [7,19,24,23,15], [6,18,17,16,0], [5,4,3,2,1]]
-                indices = [19, 24, 23, 22, 21, 20, 15, 10, 5, 0, 1, 2, 3, 4, 9, 14, 18, 17, 16, 11, 6, 7, 8, 13, 12]
-                state = np.zeros(size + 9)
-                for i in np.arange(sectors.shape[0]):
-                    state[indices[sectors[i]]] += values[i]
-                return state.reshape(5, 5)
-
-            else:
-                raise Exception("You choose the wrong size for the inner (8) or the outer (16) ring.")
-
-        except Exception as error:
-            print("caught the following error:", error)
-
-    ######### state construction #########
-
-    shp = agent.stateshape
-    state = np.zeros((shp[0], shp[1]-zeropad*2, shp[2]-zeropad*2))
-
-    x, y, name, bombs_left, score = agent.game_state['self']
-
-    radius, size = 1, 16
-    range = np.arange(s.rows)
-    mask_x = np.logical_and(range >= x - radius, range <= x + radius)
-    mask_y = np.logical_and(range >= y - radius, range <= y + radius)
-
-    ######### arena #########
-
-    arena = agent.game_state['arena']
-
-    # projection of the crates on the outer state ring
-    try:
-        crates = filter_targets(x, y,
-                                np.argwhere(arena == 0))  #### TODO: replace target: free tiles = 0 with crates = 1
-        sectors, dist = get_sector(x, y, crates, size=16)
-    except Exception as error:
-        print("hier ist auch schon ein Fehler aufgetreten:", error)
-    state[0] = sector_to_state(sectors, distance_to_value(dist), size=16)
-
-    # inner 3x3 map
-    state[0][1:-1, 1:-1] = arena[mask_y, :][:, mask_x]
-
-    ######### coins #########
-
-    coins = agent.game_state['coins']
-
-    # projection of the coins onto the outer state ring
-    sectors, dist = get_sector(x, y, coins, size=16)
-    noprint("sectors:", sectors)
-    state[1] = sector_to_state(sectors, distance_to_value(dist), size=16)
-
-    # inner 3x3 map             #### TODO: vectorize
-    coin_map = np.zeros((s.cols, s.rows))
-    for coin in coins:
-        coin_map[tuple(coin)] = 1
-
-    state[1][1:-1, 1:-1] = coin_map[mask_y, :][:, mask_x]
-
-    ######### other players #########
-
-    others = [(x, y) for (x, y, n, b, s) in agent.game_state['others']]
-    print(others)
-
-    ######### return state #########
-
-    # pad states
-    state[0] = np.pad(state[0], pad_width=2, mode='constant', constant_values=0)
-    state[1] = np.pad(state[0], pad_width=2, mode='constant', constant_values=0)
-
-    noprint("state 0:", state[0])
-    noprint("state 1:", state[1])
-
-    reducedstate = T.from_numpy(state)
-    print("final reduced state:", reducedstate)
-    if T.cuda.is_available():
-        reducedstate = reducedstate.cuda()
-    return reducedstate
 
 
 ### Loading and Saving Models and Data ###
@@ -254,7 +120,7 @@ def load_model(agent, modelpath=False, explaypath=False, trainingmode=False):
         print(f'A file could not be found. Error: {error}\nModel and buffer were not loaded!')
 
 
-def save_model(agent):
+def save_model(agent, save_explay=False):
     if not os.path.exists(home + 'models/saved/'):
         if not os.path.exists(home + 'models/'):
             os.mkdir(home + 'models/')
@@ -267,20 +133,20 @@ def save_model(agent):
         'analysis': agent.analysis,
         'trainingstep': agent.trainingstep,
         'learninginterval': agent.model.learninginterval,
+        'info': agent.model.info,
     }, modelpath)
-    '''
-    if not os.path.exists(home + 'explay/saved/'):
-        if not os.path.exists(home + 'explay/'):
-            os.mkdir(home + 'explay/')
-        os.mkdir(home + 'explay/saved/')
-    print(f'Saved model at step {agent.trainingstep}. Filename: {modelpath}')
-    explaypath = home + 'explay/saved/' + 'explay-' + agent.modelname + '_step-' + str(agent.trainingstep) \
-               + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
-    T.save({
-        'explay': agent.explay
-    }, explaypath)
-    print(f'Saved experience replay buffer. Filename: {explaypath}')
-    '''
+    if save_explay:
+        if not os.path.exists(home + 'explay/saved/'):
+            if not os.path.exists(home + 'explay/'):
+                os.mkdir(home + 'explay/')
+            os.mkdir(home + 'explay/saved/')
+        print(f'Saved model at step {agent.trainingstep}. Filename: {modelpath}')
+        explaypath = home + 'explay/saved/' + 'explay-' + agent.modelname + '_step-' + str(agent.trainingstep) \
+                   + '_aint-' + str(agent.model.analysisinterval) + '_lint-' + str(agent.model.learninginterval) + '.pth'
+        T.save({
+            'explay': agent.explay
+        }, explaypath)
+        print(f'Saved experience replay buffer. Filename: {explaypath}')
 
 class Analysisbuffer:
     def __init__(self):
@@ -305,7 +171,7 @@ def step_analysis_data(agent):
     buff.expl.append(agent.exploration)
     buff.loss.append(agent.plotloss.detach().numpy())
     buff.q.append(agent.stepq.cpu().detach().numpy())
-    avgweights = np.linalg.norm(np.concatenate([l.detach().numpy().flatten() for l in agent.model.parameters()]))
+    avgweights = np.linalg.norm(np.concatenate([l.cpu().detach().numpy().flatten() for l in agent.model.parameters()]))
     buff.weights.append(avgweights)
 
 
@@ -320,7 +186,13 @@ def average_analysis_data(agent):
         'exploration': np.array([b.expl.count('policy'), b.expl.count('random'), b.expl.count('rolemodel')]),
         'loss': np.array(b.loss).mean(),
         'q': np.array(b.q).mean(),
-        'weights': np.array(b.weights).mean()
+        'weights': np.array(b.weights).mean(),
+        'example': {
+            'state': agent.stepstate,
+            'q': agent.stepq,
+            'loss': agent.steploss,
+
+        }
     }
     agent.analysis.append(avgdata)
     agent.analysisbuffer = Analysisbuffer()
