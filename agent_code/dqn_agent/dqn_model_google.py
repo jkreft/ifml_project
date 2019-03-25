@@ -94,8 +94,8 @@ class DQN(nn.Module):
         self.agent.possibleact = self.agent.s.actions
 
 
-    def network_setup(self, insize=(17, 17), channels=4, eps=(0.95, 0.001), eps2=(0.001, 0.001), minibatch=32, gamma=0.99,
-                      lr=0.00025, lint=4, tint=10000/8, sint=1000000, aint=False):
+    def network_setup(self, insize=(17, 17), channels=4, eps=(0.95, 0.001), eps2=(0.001, 0.001), minibatch=64, gamma=0.98,
+                      lr=0.001, lint=8, tint=10000/8, sint=1000000, aint=False):
 
         ### Hyperparameters ###
         totsteps = (self.agent.s.max_steps * self.agent.s.n_rounds) - self.agent.startpolicy + 1
@@ -138,14 +138,14 @@ class DQN(nn.Module):
             out[1] = (size[1] + 2 * p[1] - d[1] * (ks[1] - 1) - 1) / s[1] + 1
             return out
 
-        self.conv1 = nn.Conv2d(channels, 32, kernel_size=3, stride=1, padding=1)
-        self.activ1 = nn.functional.leaky_relu
+        self.conv1 = nn.Conv2d(channels, 32, kernel_size=3, stride=1)
+        self.activ1 = nn.functional.relu
         self.conv2 = nn.Conv2d(32, 64, kernel_size=2, stride=1)
-        self.activ2 = nn.functional.leaky_relu
-        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=2, padding=1)
-        self.activ3 = nn.functional.leaky_relu
-        self.fc4 = nn.Linear(64*np.prod(conv_out(conv_out(conv_out(insize, ks=3, s=1, p=1), ks=2, s=1), ks=2, s=2, p=1)), 256)
-        self.activ4 = nn.functional.leaky_relu
+        self.activ2 = nn.functional.relu
+        self.conv3 = nn.Conv2d(64, 64, kernel_size=2, stride=2)
+        self.activ3 = nn.functional.relu
+        self.fc4 = nn.Linear(64*np.prod(conv_out(conv_out(conv_out(insize, ks=3, s=1, p=0), ks=2, s=1), ks=2, s=2, p=0)), 256)
+        self.activ4 = nn.functional.relu
         self.fc5 = nn.Linear(256, len(self.agent.possibleact))
         self.agent.logger.info('DQN is set up.')
         self.agent.logger.debug(self)
@@ -157,8 +157,8 @@ class DQN(nn.Module):
         self.optimizer = optim.RMSprop(self.parameters(), lr=self.learningrate, momentum=0.95, eps=0.01, weight_decay=0.0001)
 
         ### Loss function ###
-        #self.loss = nn.functional.smooth_l1_loss
-        self.loss = nn.functional.mse_loss
+        self.loss = nn.functional.smooth_l1_loss
+        #self.loss = nn.functional.mse_loss
 
         self.info = {
             'lr': self.learningrate,
@@ -177,7 +177,7 @@ class DQN(nn.Module):
 
         def random_weights(model):
             if type(model) == nn.Conv2d or type(model) == nn.Linear:
-                nn.init.kaiming_uniform_(model.weight, nonlinearity='leaky_relu')
+                nn.init.kaiming_uniform_(model.weight, nonlinearity='relu')
                 model.bias.data.fill_(0.01)
         if random:
             # Set initial weights randomly
@@ -200,15 +200,15 @@ class DQN(nn.Module):
 
         noprint('Input:', input.shape)
         interm = self.activ1(self.conv1(input))
-        noprint('Conv1, lReLU:', interm.shape)
+        noprint('Conv1, ReLU:', interm.shape)
         interm = self.activ2(self.conv2(interm))
-        noprint('Conv2, lReLU:', interm.shape)
+        noprint('Conv2, ReLU:', interm.shape)
         interm = self.activ3(self.conv3(interm))
-        noprint('Conv4, lReLU:', interm.shape)
+        noprint('Conv4, ReLU:', interm.shape)
         interm = interm.view(interm.size(0), -1)
         noprint('".view(.size(0), -1)":', interm.shape)
         interm = self.activ4(self.fc4(interm))
-        noprint('FC4, lReLU:', interm.shape)
+        noprint('FC4, ReLU:', interm.shape)
         output = self.fc5(interm)
         noprint('Output:', output.shape)
 
@@ -224,7 +224,7 @@ class DQN(nn.Module):
         '''
         t = self.agent.trainingstep - self.agent.startpolicy + 1
         if self.agent.trainingstep < self.agent.startpolicy:
-            self.stepsilon = 0.95
+            self.stepsilon = 0.30
             if np.random.random() > self.stepsilon:
                 choice = 'random'
             else:

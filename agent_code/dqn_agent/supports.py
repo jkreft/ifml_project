@@ -56,15 +56,16 @@ def construct_time_state_tensor(agent):
     # Initialize numpy array layers
     coins, walls, crates, myself = [np.zeros_like(agent.game_state['arena']) for i in range(4)]
     # Set "Brightness value" for each
-    walls[np.where(agent.game_state['arena'] == -1)] = 10
-    crates[np.where(agent.game_state['arena'] == +1)] = 20
-    myself[agent.game_state['self'][0], agent.game_state['self'][1]] = 100
+    walls[np.where(agent.game_state['arena'] == -1)] = 1
+    crates[np.where(agent.game_state['arena'] == +1)] = 2
+    myself[agent.game_state['self'][0], agent.game_state['self'][1]] = 10
     for coin in agent.game_state['coins']:
-        coins[coin[0], coin[1]] = 40
+        coins[coin[0], coin[1]] = 4
     state[newest] += T.from_numpy(walls).to(dtype=T.float)
     state[newest] += T.from_numpy(crates).to(dtype=T.float)
     state[newest] += T.from_numpy(myself).to(dtype=T.float)
     state[newest] += T.from_numpy(coins).to(dtype=T.float)
+    #state[newest] = state[newest] - T.from_numpy(np.ones_like(myself)*5).to(dtype=T.float)
 
     # Other players' positions
     #for other in agent.game_state['others']:

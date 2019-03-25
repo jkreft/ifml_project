@@ -4,7 +4,6 @@
 import numpy as np
 from datetime import datetime
 import os
-import sys
 import torch as T
 import torch.nn as nn
 from settings import s, e
@@ -20,7 +19,7 @@ load_from_file = resume_training if training_mode else True
 max_trainingsteps = 1050000
 analysis_interval = 5000
 save_interval = 1000000
-start_policy = 0
+start_policy = 100000
 replay_buffer_size = 1000000
 feature_reduction = False
 
@@ -103,8 +102,8 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [10, 0, 0, 0, -0.01, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # coins
-        #rewardtab = [0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # down
+        rewardtab = [0, 0, 0, 0, -0.01, 0, -1, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0] # coins
+        #rewardtab = [0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # down
 
     # Initialize reward, loop through events, and add up rewards
     reward = -0.5
@@ -115,7 +114,6 @@ def get_cookies(agent, rewardtab=None):
 
 def construct_experience(agent):
     return agent.laststate, T.LongTensor([[agent.lastaction]]), T.tensor([agent.stepreward]).float(), agent.stepstate
-
 
 
 
@@ -246,7 +244,7 @@ def act(self):
                     nfnextstate = nfnextstate.cuda()
                 #print('marker0')
                 self.stepq = self.model(batch.state) # Get q-values from state using the model
-                self.stepq = self.stepq.gather(1, batch.action) # Put together with actions
+                self.stepq = self.stepq.gather(1, batch.action).to(self.device) # Put together with actions
                 nextq = T.zeros((len(batch.nextstate), len(self.possibleact))).to(self.device)
                 #nextq = self.targetmodel(batch.nextstate).to(self.device)
                 nfnextq = self.targetmodel(nfnextstate).to(self.device)
@@ -317,6 +315,7 @@ def end_of_episode(self):
     self.model.explay.store_batch(self.episodeseq)
     self.trainingstep += 1
     self.episodeseq = []
+    self.laststate = T.zeros(self.stateshape).to(self.device)
 
     if (self.trainingstep > max_trainingsteps) and (self.finished == False):
         save_model(self)
