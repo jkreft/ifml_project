@@ -107,3 +107,6 @@ venv.bak/
 # IDE specific config files
 .pydevproject
 .project
+models/
+/agent_code/dqn_agent/models
+replays/
