@@ -42,7 +42,7 @@ def construct_state(agent):
     :param agent: Agent object.
     :return: State tensor (on cuda if available).
     '''
-    return construct_reduced_state_tensor(agent) if feature_reduction else construct_time_state_tensor(agent)
+    return construct_time_state_tensor(agent)
 
 
 def select_action(agent, rolemodel=False):
@@ -102,11 +102,11 @@ def get_cookies(agent, rewardtab=None):
         # 'MOVED_LEFT', 'MOVED_RIGHT', 'MOVED_UP', 'MOVED_DOWN', 'WAITED', 'INTERRUPTED', 'INVALID_ACTION', 'BOMB_DROPPED',
         # 'BOMB_EXPLODED','CRATE_DESTROYED', 'COIN_FOUND', 'COIN_COLLECTED', 'KILLED_OPPONENT', 'KILLED_SELF', 'GOT_KILLED',
         # 'OPPONENT_ELIMINATED', 'SURVIVED_ROUND'
-        rewardtab = [0, 0, 0, 0, -0.01, 0, -1, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0] # coins
+        rewardtab = [0, 0, 0, 0, -0.1, 0, -5, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0] # coins
         #rewardtab = [0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] # down
 
     # Initialize reward, loop through events, and add up rewards
-    reward = -0.5
+    reward = -0.2
     for event in events:
         reward += rewardtab[event]
     return reward

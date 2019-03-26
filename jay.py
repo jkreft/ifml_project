@@ -17,7 +17,7 @@ from settings import s
 
 
 ### Set mode ###
-training_mode = True
+training_mode = False if s.gui else True
 on_server = False
 
 
@@ -56,12 +56,12 @@ def jay():
     if training_mode:
         world = BombeRLeWorld([
             ('dqn_agent', True)
-])
+        ])
     else:
         # Initialize environment and agents
         world = BombeRLeWorld([
             ('dqn_agent', False)
-            ])
+        ])
     # world = ReplayWorld('Replay 2019-01-30 16:57:42')
     user_inputs = []
 

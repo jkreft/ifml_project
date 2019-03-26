@@ -157,7 +157,7 @@ class DQN(nn.Module):
         self.optimizer = optim.RMSprop(self.parameters(), lr=self.learningrate, momentum=0.95, eps=0.01, weight_decay=0.0001)
 
         ### Loss function ###
-        self.loss = nn.functional.smooth_l1_loss
+        self.loss = nn.functional.smooth_l1_loss # Huber loss
         #self.loss = nn.functional.mse_loss
 
         self.info = {
@@ -189,7 +189,7 @@ class DQN(nn.Module):
         self.agent.logger.info('Model initialized.')
 
 
-    def forward(self, input, silent=True):
+    def forward(self, input, silent=False):
         '''
         Forward calculation of neural activations ...
         :param input: Input tensor.
